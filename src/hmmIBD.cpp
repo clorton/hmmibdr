@@ -15,6 +15,7 @@ void parse_parameters(
     bool& iflag2, std::string& data_file2,
     bool& oflag, std::string& out_filebase);
 
+FILE* open_frequency_file(bool freq_flag2, std::string& freq_file2);
 
 //' @title
 //' hmmIBD
@@ -71,7 +72,7 @@ int hmmibd_c(Rcpp::List param_list) {
   int nsample_use1, nsnp, ipair, npair, isnp, chrlen, *pos, *psi[2], max, iline;
   int *nmiss_bypair=NULL, totall1, totall2, *start_chr=NULL, *end_chr=NULL, is, maxlen;
   int **use_pair=NULL, *nall=NULL, killit, nuse_pair=0, gi, gj, delpos;
-  int ntri=0, ibad, nbad, start_snp, ex_all=0, last_snp, c;
+  int ntri=0, ibad, nbad, start_snp, ex_all=0, last_snp;
   int fpos=0, fchr=0, iter, ntrans, finish_fit;
   int prev_chrom, ngood, nskipped=0, nsite, jstart;
   int count_ibd_vit, count_dbd_vit;
@@ -124,15 +125,11 @@ int hmmibd_c(Rcpp::List param_list) {
     Rcpp::stop("");
   }
 
-  allcount1 = (int *)malloc((max_all+1) * sizeof(int));
-  if (freq_flag1) {
-    ff1 = fopen(freq_file1.c_str(), "r");
-    if (ff1 == NULL) {REprintf("Could not open frequency file %s\n", freq_file1.c_str()); Rcpp::stop("");}
-  }
-  if (freq_flag2) {
-    ff2 = fopen(freq_file2.c_str(), "r");
-    if (ff2 == NULL) {REprintf("Could not open frequency file %s\n", freq_file2.c_str()); Rcpp::stop("");}
-  }
+  allcount1 = new int[max_all + 1];
+
+  ff1 = open_frequency_file(freq_flag1, freq_file1);
+  ff2 = open_frequency_file(freq_flag2, freq_file2);
+
   bad_samp = (char **)malloc(max_bad * sizeof(char*));
   good_pair[0] = (char **)malloc(max_good * sizeof(char*));
   good_pair[1] = (char **)malloc(max_good * sizeof(char*));
@@ -1071,4 +1068,19 @@ void parse_parameters(
     out_filebase = (const char*)param_list["o"];
     Rprintf("out_filebase = '%s'\n", out_filebase.c_str());
   }
+}
+
+FILE* open_frequency_file(bool flag, std::string& filename)
+{
+    FILE* file = nullptr;
+
+    if (flag) {
+        file = fopen(filename.c_str(), "r");
+        if (!file) {
+            REprintf("Could not open frequency file %s\n", filename.c_str());
+            Rcpp::stop("");
+        }
+    }
+  
+  return file;
 }
