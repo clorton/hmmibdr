@@ -59,21 +59,21 @@ int hmmibd_c(Rcpp::List param_list) {
   int max_good = 200;
   int linesize = 4000;
   char *newLine1, *newLine2, *token, *running, **sample1, **sample2, *head;
-  char **bad_samp=NULL, **good_pair[2]={NULL};
+  char **bad_samp=nullptr, **good_pair[2]={nullptr};
   int itoken, nsample1=0, nsample2=0, isamp, chr, sum, iall, all, js, snp_ind;
   int **geno1, **geno2, chr2, pos2, majall, npair_report;
   double **discord, pright, seq_ibd_fb=0, seq_dbd_fb=0, p_ibd, fmean, fmeani, fmeanj;
-  double **freq1=NULL, **freq2=NULL, *ffreq1=NULL, *ffreq2=NULL, xisum, xi[2][2], trans_pred, trans_obs;
+  double **freq1=nullptr, **freq2=nullptr, *ffreq1=nullptr, *ffreq2=nullptr, xisum, xi[2][2], trans_pred, trans_obs;
   double *phi[2], pinit[2], pi[2], *b[2], a[2][2], ptrans, *alpha[2], *beta[2], *scale;
   double maxval, max_phi=0, max_phiL, seq_ibd, seq_dbd, count_ibd_fb, count_dbd_fb;
   double gamma[2], last_pi=0, last_prob=0, last_krec=0, delpi, delprob, delk, maxfreq;
-  FILE *inf1=NULL, *inf2=NULL, *outf=NULL, *pf=NULL, *ff1=NULL, *ff2=NULL;
-  int *diff=NULL, *same_min=NULL, jsamp, *allcount1, *allcount2, *use_sample1, *use_sample2;
+  FILE *inf1=nullptr, *inf2=nullptr, *outf=nullptr, *pf=nullptr, *ff1=nullptr, *ff2=nullptr;
+  int *diff=nullptr, *same_min=nullptr, jsamp, *allcount1, *allcount2, *use_sample1, *use_sample2;
   int *traj, add_seq, nsample_use2;
   int nsample_use1, nsnp, ipair, npair, isnp, chrlen, *pos, *psi[2], max, iline;
-  int *nmiss_bypair=NULL, totall1, totall2, *start_chr=NULL, *end_chr=NULL, is, maxlen;
+  int *nmiss_bypair=nullptr, totall1, totall2, *start_chr=nullptr, *end_chr=nullptr, is, maxlen;
   bool **use_pair = nullptr;
-  int *nall=NULL, killit, nuse_pair=0, gi, gj, delpos;
+  int *nall=nullptr, killit, nuse_pair=0, gi, gj, delpos;
   int ntri=0, ibad, nbad, start_snp, ex_all=0, last_snp;
   int fpos=0, fchr=0, iter, ntrans, finish_fit;
   int prev_chrom, ngood, nskipped=0, nsite, jstart;
@@ -174,12 +174,12 @@ int hmmibd_c(Rcpp::List param_list) {
   ngood = nbad = 0;
   if (bflag) {
     inf1 = fopen(bad_file.c_str(), "r");
-    if (inf1 == NULL) {
+    if (!inf1) {
       REprintf("Could not open file of bad samples: %s\n", bad_file.c_str());
       bflag = false;
     }
     else {
-      while (fgets(newLine1, linesize, inf1) != NULL) {
+      while (fgets(newLine1, linesize, inf1)) {
         newLine1[strcspn(newLine1, "\r\n")] = 0;
         strncpy(bad_samp[nbad], newLine1, 63);
         nbad++;
@@ -197,15 +197,14 @@ int hmmibd_c(Rcpp::List param_list) {
 
   if (gflag) {
     inf1 = fopen(good_file.c_str(), "r");
-    if (inf1 == NULL) {
+    if (!inf1) {
       REprintf("Could not open file of good sample pairs: %s\n", good_file.c_str());
       gflag = false;
     }
     else {
-      while (fgets(newLine1, linesize, inf1) != NULL) {
+      while (fgets(newLine1, linesize, inf1)) {
         newLine1[strcspn(newLine1, "\r\n")] = 0;
-        for (running = newLine1, itoken = 0; (token = strsep(&running, "\t")) != NULL && itoken < 2;
-        itoken++) {
+        for (running = newLine1, itoken = 0; (token = strsep(&running, "\t")) && (itoken < 2); ++itoken) {
           strncpy(good_pair[itoken][ngood], token, 63);
         }
         if (good_pair[1][ngood][0] == 0) {
@@ -237,18 +236,18 @@ int hmmibd_c(Rcpp::List param_list) {
   fprintf(outf, "sample1\tsample2\tchr\tstart\tend\tdifferent\tNsnp\n");
   file = out_filebase + ".hmm_fract.txt";
   pf = fopen(file.c_str(), "w");
-  if (pf == NULL) {REprintf("Could not open output file %s\n", file.c_str()); Rcpp::stop("");}
+  if (!pf) {REprintf("Could not open output file %s\n", file.c_str()); Rcpp::stop("");}
   fprintf(pf, "sample1\tsample2\tN_informative_sites\tdiscordance\tlog_p\tN_fit_iteration\tN_generation");
   fprintf(pf, "\tN_state_transition\tseq_shared_best_traj\tfract_sites_IBD\tfract_vit_sites_IBD\n");
 
   // Check line size
-  if(fgets(newLine1, linesize, inf1) != NULL) { // header1
+  if(fgets(newLine1, linesize, inf1)) { // header1
     while (strlen(newLine1) > (unsigned long) linesize-2) {
       fseek(inf1, 0, 0);
       linesize *= 2;
       free(newLine1);
       newLine1 = new char[linesize+1];
-      if(fgets(newLine1, linesize, inf1) == NULL) { // header1
+      if(fgets(newLine1, linesize, inf1)) { // header1
         REprintf("Could not read string from stream %s\n", inf1);
         Rcpp::stop("");
       }
@@ -262,7 +261,7 @@ int hmmibd_c(Rcpp::List param_list) {
   head = new char[linesize+1];
   assert(head);
   strcpy(head, newLine1);
-  for (running = newLine1, itoken = 0; (token = strsep(&running, "\t")) != NULL; itoken++) {
+  for (running = newLine1, itoken = 0; (token = strsep(&running, "\t")); ++itoken) {
     if (itoken > 1) {nsample1++;}
   }
 
@@ -286,7 +285,7 @@ int hmmibd_c(Rcpp::List param_list) {
 
   // Parse header1, store sample names after screening for excluded sample ids
   isamp = nsample_use1 = nsample_use2 = 0;
-  for (running = head, itoken = 0; (token = strsep(&running, "\t")) != NULL; itoken++) {
+  for (running = head, itoken = 0; (token = strsep(&running, "\t")); ++itoken) {
     if (itoken > 1) {
       strncpy(sample1[isamp], token, 63);
       use_sample1[isamp] = 1;
@@ -307,13 +306,13 @@ int hmmibd_c(Rcpp::List param_list) {
   // Note: using newLine1 for both files until we start reading genotypes. This way newLine2 only
   // has to be allocated once, after both headers have been read and the line length possibly increased
   if (iflag2) {
-    if(fgets(newLine1, linesize, inf2) != NULL){ // header2
+    if(fgets(newLine1, linesize, inf2)){ // header2
     while (strlen(newLine1) > (unsigned long) linesize-2) {
       fseek(inf2, 0, 0);
       linesize *= 2;
       free(newLine1);
       newLine1 = new char[linesize+1];
-      if(fgets(newLine1, linesize, inf2) == NULL) { // header2
+      if(!fgets(newLine1, linesize, inf2)) { // header2
         REprintf("Could not read string from stream %s\n", inf2);
         Rcpp::stop("");
       }
@@ -329,7 +328,7 @@ int hmmibd_c(Rcpp::List param_list) {
     head = new char[linesize+1];
     assert(head);
     strcpy(head, newLine1);
-    for (running = newLine1, itoken = 0; (token = strsep(&running, "\t")) != NULL; itoken++) {
+    for (running = newLine1, itoken = 0; (token = strsep(&running, "\t")); ++itoken) {
       if (itoken > 1) {nsample2++;}
     }
 
@@ -357,13 +356,13 @@ int hmmibd_c(Rcpp::List param_list) {
     use_pair[isamp] = new bool[nsample2];
     assert(use_pair[isamp]);
     discord[isamp] = new double[nsample2];
-    assert(discord[isamp] != NULL);
+    assert(discord[isamp]);
   }
 
   // Parse header2, store sample names after screening for excluded sample ids
   if (iflag2) {
     isamp = 0;
-    for (running = head, itoken = 0; (token = strsep(&running, "\t")) != NULL; itoken++) {
+    for (running = head, itoken = 0; (token = strsep(&running, "\t")); ++itoken) {
       if (itoken > 1) {
         strncpy(sample2[isamp], token, 63);
         use_sample2[isamp] = 1;
@@ -443,10 +442,10 @@ int hmmibd_c(Rcpp::List param_list) {
 
   nsnp = 0;
   iline = -1;
-  while (fgets(newLine1, linesize, inf1) != NULL) {
+  while (fgets(newLine1, linesize, inf1)) {
     newLine1[strcspn(newLine1, "\r\n")] = 0;
     if (iflag2) {
-      if(fgets(newLine2, linesize, inf2) != NULL) {;
+      if(fgets(newLine2, linesize, inf2)) {;
       newLine2[strcspn(newLine2, "\r\n")] = 0;
       } else {
         REprintf("Could not read string from stream %s\n", inf2);
@@ -455,29 +454,29 @@ int hmmibd_c(Rcpp::List param_list) {
     }
     if (nsnp == max_snp) {
       nall = (int *)realloc(nall, 2*max_snp*sizeof(int));
-      assert(nall != NULL);
+      assert(nall);
       pos = (int *)realloc(pos, 2*max_snp*sizeof(int));
-      assert(pos != NULL);
+      assert(pos);
       for (isamp = 0; isamp < nsample1; isamp++) {
         geno1[isamp] = (int *)realloc(geno1[isamp], 2*max_snp*sizeof(int));
-        assert(geno1[isamp] != NULL);
+        assert(geno1[isamp]);
       }
       freq1 = (double **)realloc(freq1, 2*max_snp*sizeof(double*));
-      assert(freq1 != NULL);
+      assert(freq1);
       for (isnp = max_snp; isnp < 2*max_snp; isnp++) {
         freq1[isnp] = new double[max_all+1];
-        assert(freq1[isnp] != NULL);
+        assert(freq1[isnp]);
       }
       if (iflag2) {
         for (isamp = 0; isamp < nsample2; isamp++) {
           geno2[isamp] = (int *)realloc(geno2[isamp], 2*max_snp*sizeof(int));
-          assert(geno2[isamp] != NULL);
+          assert(geno2[isamp]);
         }
         freq2 = (double **)realloc(freq2, 2*max_snp*sizeof(double*));
-        assert(freq2 != NULL);
+        assert(freq2);
         for (isnp = max_snp; isnp < 2*max_snp; isnp++) {
           freq2[isnp] = new double[max_all+1];
-          assert(freq2[isnp] != NULL);
+          assert(freq2[isnp]);
         }
       }   // end if iflag2
       else {
@@ -491,7 +490,7 @@ int hmmibd_c(Rcpp::List param_list) {
     for (iall = 0; iall <= max_all; iall++) {allcount1[iall] = allcount2[iall] = 0;}
 
     // Parse line, pop1
-    for (running = newLine1, itoken = 0; (token = strsep(&running, "\t")) != NULL; itoken++) {
+    for (running = newLine1, itoken = 0; (token = strsep(&running, "\t")); ++itoken) {
       if (itoken == 0) {
         chr = strtol(token, &erp, 10);
         if (token == erp) {
@@ -539,7 +538,7 @@ int hmmibd_c(Rcpp::List param_list) {
 
     // Parse line, pop2
     if (iflag2) {
-      for (running = newLine2, itoken = 0; (token = strsep(&running, "\t")) != NULL; itoken++) {
+      for (running = newLine2, itoken = 0; (token = strsep(&running, "\t")); ++itoken) {
         if (itoken == 0) {
           chr2 = strtol(token, &erp, 10);
           if (token == erp) {
@@ -589,12 +588,12 @@ int hmmibd_c(Rcpp::List param_list) {
         ffreq1[iall] = 0;
       }
 
-      if (fgets(newLine1, linesize, ff1) == NULL) {
+      if (!fgets(newLine1, linesize, ff1)) {
         REprintf("Could not read string from stream %s\n", ff1);
         Rcpp::stop("");
       };
       fpos = fchr = 0;
-      for (running = newLine1, itoken = 0; (token = strsep(&running, "\t")) != NULL; itoken++) {
+      for (running = newLine1, itoken = 0; (token = strsep(&running, "\t")); ++itoken) {
         if (itoken == 0) {
           fchr = strtol(token, &erp, 10);
           if (token == erp) {
@@ -609,7 +608,7 @@ int hmmibd_c(Rcpp::List param_list) {
             Rcpp::stop("");
           }
         }
-        else if (itoken > 1) {ffreq1[itoken-2] = strtod(token, NULL);}
+        else if (itoken > 1) {ffreq1[itoken-2] = strtod(token, nullptr);}
       }
       if (fchr != chr || fpos != pos[nsnp]) {
         REprintf("Mismatch between data file and frequency file. Data file (chr/pos): %d/%d vs freq file: %d/%d\n",
@@ -624,12 +623,12 @@ int hmmibd_c(Rcpp::List param_list) {
       for (iall = 0; iall <= max_all; iall++) {
         ffreq2[iall] = 0;
       }
-      if (fgets(newLine2, linesize, ff2) == NULL) {
+      if (!fgets(newLine2, linesize, ff2)) {
         REprintf("Could not read string from stream %s\n", ff2);
         Rcpp::stop("");
       };
       fpos = fchr = 0;
-      for (running = newLine2, itoken = 0; (token = strsep(&running, "\t")) != NULL; itoken++) {
+      for (running = newLine2, itoken = 0; (token = strsep(&running, "\t")); ++itoken) {
         if (itoken == 0) {
           fchr = strtol(token, &erp, 10);
           if (token == erp) {
@@ -644,7 +643,7 @@ int hmmibd_c(Rcpp::List param_list) {
             Rcpp::stop("");
           }
         }
-        else if (itoken > 1) {ffreq2[itoken-2] = strtod(token, NULL);}
+        else if (itoken > 1) {ffreq2[itoken-2] = strtod(token, nullptr);}
       }
       if (fchr != chr || fpos != pos[nsnp]) {
         REprintf("Mismatch between data file and frequency file. Data file (chr/pos): %d/%d vs freq file: %d/%d\n",
