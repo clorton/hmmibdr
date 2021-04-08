@@ -1,5 +1,19 @@
 
+#include <string>
+
 #include "hmmIBD.h"
+
+void parse_parameters(
+    Rcpp::List& param_list,
+    bool& freq_flag1, std::string& freq_file1,
+    bool& freq_flag2, std::string& freq_file2,
+    bool& bflag, std::string& bad_file,
+    bool& gflag, std::string& good_file,
+    bool& mflag, int& niter,
+    bool& nflag, double& k_rec_max,
+    bool& iflag1, std::string& data_file1,
+    bool& iflag2, std::string& data_file2,
+    bool& oflag, std::string& out_filebase);
 
 
 //' @title
@@ -38,13 +52,12 @@ int hmmibd_c(Rcpp::List param_list) {
   const int max_all = 8;
   int niter = 5;    // maximum number of iterations of fit; can be overriden by -m
   int max_snp = 30000;
-  char data_file1[128], data_file2[128], *erp;
-  char out_filebase[128], freq_file1[128], freq_file2[128], good_file[128], bad_file[128];
+  char* erp;
   int max_bad = 100;
   int max_good = 200;
   int linesize = 4000;
   char *newLine1, *newLine2, *token, *running, **sample1, **sample2, *head;
-  char file[64], **bad_samp=NULL, **good_pair[2]={NULL};
+  char **bad_samp=NULL, **good_pair[2]={NULL};
   int itoken, nsample1=0, nsample2=0, isamp, chr, sum, iall, all, js, snp_ind;
   int **geno1, **geno2, chr2, pos2, majall, npair_report;
   double **discord, pright, seq_ibd_fb=0, seq_dbd_fb=0, p_ibd, fmean, fmeani, fmeanj;
@@ -58,10 +71,29 @@ int hmmibd_c(Rcpp::List param_list) {
   int nsample_use1, nsnp, ipair, npair, isnp, chrlen, *pos, *psi[2], max, iline;
   int *nmiss_bypair=NULL, totall1, totall2, *start_chr=NULL, *end_chr=NULL, is, maxlen;
   int **use_pair=NULL, *nall=NULL, killit, nuse_pair=0, gi, gj, delpos;
-  int ntri=0, ibad, nbad, start_snp, ex_all=0, last_snp, c, iflag1, iflag2, oflag;
-  int freq_flag1, freq_flag2, fpos=0, fchr=0, iter, ntrans, mflag, finish_fit, bflag, gflag;
-  int prev_chrom, ngood, nflag, nskipped=0, nsite, jstart;
+  int ntri=0, ibad, nbad, start_snp, ex_all=0, last_snp, c;
+  int fpos=0, fchr=0, iter, ntrans, finish_fit;
+  int prev_chrom, ngood, nskipped=0, nsite, jstart;
   int count_ibd_vit, count_dbd_vit;
+
+  std::string freq_file1;
+  std::string freq_file2;
+  std::string bad_file;
+  std::string good_file;
+  std::string data_file1;
+  std::string data_file2;
+  std::string out_filebase;
+  std::string file;
+
+  bool freq_flag1 = false;
+  bool freq_flag2 = false;
+  bool bflag      = false;
+  bool gflag      = false;
+  bool mflag      = false;
+  bool nflag      = false;
+  bool iflag1     = false;
+  bool iflag2     = false;
+  bool oflag      = false;
 
   pinit[0] = 0.5;  // flat prior
   pinit[1] = 0.5;
@@ -73,60 +105,33 @@ int hmmibd_c(Rcpp::List param_list) {
   strcat(usage_string, "  [-g <file with sample pairs to use>]\n");
 
   opterr = 0;
-  mflag = iflag1 = iflag2 = oflag = freq_flag1 = freq_flag2 = bflag = gflag = nflag = 0;
 
-  // parse parameters
-  if (param_list["f"] != R_NilValue){
-    freq_flag1 = 1;
-    strcpy(freq_file1, param_list["f"]);
-  }
-  if (param_list["F"] != R_NilValue){
-    freq_flag2 = 1;
-    strcpy(freq_file2, param_list["F"]);
-  }
-  if (param_list["b"] != R_NilValue){
-    bflag = 1;
-    strcpy(bad_file, param_list["b"]);
-  }
-  if (param_list["g"] != R_NilValue){
-    gflag = 1;
-    strcpy(good_file, param_list["g"]);
-  }
-  if (param_list["m"] != R_NilValue){
-    mflag = 1;
-    niter = Rcpp::as<int>(param_list["m"]);
-  }
-  if (param_list["n"] != R_NilValue){
-    nflag = 1;
-    k_rec_max = Rcpp::as<double>(param_list["n"]);
-  }
-  if (param_list["i"] != R_NilValue){
-    iflag1 = 1;
-    strcpy(data_file1, param_list["i"]);
-  }
-  if (param_list["I"] != R_NilValue){
-    iflag2 = 1;
-    strcpy(data_file2, param_list["I"]);
-  }
-  if (param_list["o"] != R_NilValue){
-    oflag = 1;
-    strcpy(out_filebase, param_list["o"]);
-  }
+  parse_parameters(
+    param_list,
+    freq_flag1, freq_file1,
+    freq_flag2, freq_file2,
+    bflag, bad_file,
+    gflag, good_file,
+    mflag, niter,
+    nflag, k_rec_max,
+    iflag1, data_file1,
+    iflag2, data_file2,
+    oflag, out_filebase);
 
-  if (freq_flag2 == 1 && iflag2 == 0) {
+  if (freq_flag2 && !iflag2) {
     REprintf("Inconsistent options: frequency file for 2nd population specified");
     REprintf(" with no data file for that population\n");
     Rcpp::stop("");
   }
 
   allcount1 = (int *)malloc((max_all+1) * sizeof(int));
-  if (freq_flag1 == 1) {
-    ff1 = fopen(freq_file1, "r");
-    if (ff1 == NULL) {REprintf("Could not open frequency file %s\n", freq_file1); Rcpp::stop("");}
+  if (freq_flag1) {
+    ff1 = fopen(freq_file1.c_str(), "r");
+    if (ff1 == NULL) {REprintf("Could not open frequency file %s\n", freq_file1.c_str()); Rcpp::stop("");}
   }
-  if (freq_flag2 == 1) {
-    ff2 = fopen(freq_file2, "r");
-    if (ff2 == NULL) {REprintf("Could not open frequency file %s\n", freq_file2); Rcpp::stop("");}
+  if (freq_flag2) {
+    ff2 = fopen(freq_file2.c_str(), "r");
+    if (ff2 == NULL) {REprintf("Could not open frequency file %s\n", freq_file2.c_str()); Rcpp::stop("");}
   }
   bad_samp = (char **)malloc(max_bad * sizeof(char*));
   good_pair[0] = (char **)malloc(max_good * sizeof(char*));
@@ -153,7 +158,7 @@ int hmmibd_c(Rcpp::List param_list) {
     good_pair[0][isamp] = (char *)calloc(64, sizeof(char));
     good_pair[1][isamp] = (char *)calloc(64, sizeof(char));
   }
-  if (iflag2 == 1) {
+  if (iflag2) {
     allcount2 = (int *)malloc((max_all+1) * sizeof(int));
     freq2 = (double **)malloc(max_snp * sizeof(double*));
     for (isnp = 0; isnp < max_snp; isnp++) {
@@ -168,11 +173,11 @@ int hmmibd_c(Rcpp::List param_list) {
   }
 
   ngood = nbad = 0;
-  if (bflag == 1) {
-    inf1 = fopen(bad_file, "r");
+  if (bflag) {
+    inf1 = fopen(bad_file.c_str(), "r");
     if (inf1 == NULL) {
-      REprintf("Could not open file of bad samples: %s\n", bad_file);
-      bflag = 0;
+      REprintf("Could not open file of bad samples: %s\n", bad_file.c_str());
+      bflag = false;
     }
     else {
       while (fgets(newLine1, linesize, inf1) != NULL) {
@@ -191,11 +196,11 @@ int hmmibd_c(Rcpp::List param_list) {
     }
   }
 
-  if (gflag == 1) {
-    inf1 = fopen(good_file, "r");
+  if (gflag) {
+    inf1 = fopen(good_file.c_str(), "r");
     if (inf1 == NULL) {
-      REprintf("Could not open file of good sample pairs: %s\n", good_file);
-      gflag = 0;
+      REprintf("Could not open file of good sample pairs: %s\n", good_file.c_str());
+      gflag = false;
     }
     else {
       while (fgets(newLine1, linesize, inf1) != NULL) {
@@ -224,19 +229,19 @@ int hmmibd_c(Rcpp::List param_list) {
     }
   }
 
-  inf1 = fopen(data_file1, "r");
-  if (inf1 == NULL) {REprintf("Could not open input file %s\n", data_file1); Rcpp::stop("");}
-  if (iflag2 == 1) {
-    inf2 = fopen(data_file2, "r");
-    if (inf2 == NULL) {REprintf("Could not open input file %s\n", data_file2); Rcpp::stop("");}
+  inf1 = fopen(data_file1.c_str(), "r");
+  if (inf1 == NULL) {REprintf("Could not open input file %s\n", data_file1.c_str()); Rcpp::stop("");}
+  if (iflag2) {
+    inf2 = fopen(data_file2.c_str(), "r");
+    if (inf2 == NULL) {REprintf("Could not open input file %s\n", data_file2.c_str()); Rcpp::stop("");}
   }
-  sprintf(file, "%s.hmm.txt", out_filebase);
-  outf = fopen(file, "w");
-  if (outf == NULL) {REprintf("Could not open output file %s\n", file); Rcpp::stop("");}
+  file = out_filebase + ".hmm.txt";
+  outf = fopen(file.c_str(), "w");
+  if (outf == NULL) {REprintf("Could not open output file %s\n", file.c_str()); Rcpp::stop("");}
   fprintf(outf, "sample1\tsample2\tchr\tstart\tend\tdifferent\tNsnp\n");
-  sprintf(file, "%s.hmm_fract.txt", out_filebase);
-  pf = fopen(file, "w");
-  if (pf == NULL) {REprintf("Could not open output file %s\n", file); Rcpp::stop("");}
+  file = out_filebase + ".hmm_fract.txt";
+  pf = fopen(file.c_str(), "w");
+  if (pf == NULL) {REprintf("Could not open output file %s\n", file.c_str()); Rcpp::stop("");}
   fprintf(pf, "sample1\tsample2\tN_informative_sites\tdiscordance\tlog_p\tN_fit_iteration\tN_generation");
   fprintf(pf, "\tN_state_transition\tseq_shared_best_traj\tfract_sites_IBD\tfract_vit_sites_IBD\n");
 
@@ -305,7 +310,7 @@ int hmmibd_c(Rcpp::List param_list) {
 
   // Note: using newLine1 for both files until we start reading genotypes. This way newLine2 only
   //  has to be allocated once, after both headers have been read and the line length possibly increased
-  if (iflag2 == 1) {
+  if (iflag2) {
     if(fgets(newLine1, linesize, inf2) != NULL){ // header2
     while (strlen(newLine1) > (unsigned long) linesize-2) {
       fseek(inf2, 0, 0);
@@ -360,7 +365,7 @@ int hmmibd_c(Rcpp::List param_list) {
   }
 
   // Parse header2, store sample names after screening for excluded sample ids
-  if (iflag2 == 1) {
+  if (iflag2) {
     isamp = 0;
     for (running = head, itoken = 0; (token = strsep(&running, "\t")) != NULL; itoken++) {
       if (itoken > 1) {
@@ -391,23 +396,23 @@ int hmmibd_c(Rcpp::List param_list) {
   Rprintf("Pairs accepted with discordance in range (%.2f%%, %.2f%%)\n",
           min_discord*100, max_discord*100);
   Rprintf("Genotyping error rate: %.2f%%\n", eps*100);
-  if (iflag2 == 1) {
-    Rprintf("Input files: %s and %s\n", data_file1, data_file2);
+  if (iflag2) {
+    Rprintf("Input files: %s and %s\n", data_file1.c_str(), data_file2.c_str());
   }
   else {
-    Rprintf("Input file: %s\n", data_file1);
+    Rprintf("Input file: %s\n", data_file1.c_str());
   }
   Rprintf("Frequency files: ");
-  if (freq_flag1 == 1) {Rprintf("%s and ", freq_file1);}
+  if (freq_flag1) {Rprintf("%s and ", freq_file1.c_str());}
   else {Rprintf("none and ");}
-  if (freq_flag2 == 1) {Rprintf("%s\n", freq_file2);}
+  if (freq_flag2) {Rprintf("%s\n", freq_file2.c_str());}
   else {Rprintf("none\n");}
-  if (nflag == 1) {Rprintf("Number of generations capped at %.2f\n", k_rec_max);}
+  if (nflag) {Rprintf("Number of generations capped at %.2f\n", k_rec_max);}
 
   npair = nsample_use1 * nsample_use2;
   npair_report = nsample_use1 * (nsample_use1-1) / 2;
   Rprintf("pop1 nsample: %d used: %d", nsample1, nsample_use1);
-  if (iflag2 == 1) {
+  if (iflag2) {
     npair_report = npair;
     Rprintf("  pop2 nsample: %d used: %d", nsample2, nsample_use2);}
   Rprintf(" Expected pairs: %d\n", npair_report);
@@ -419,9 +424,9 @@ int hmmibd_c(Rcpp::List param_list) {
   // All pairs are to be used by default, unless we've read a file of good pairs
   //   Except single-pop samples should not be compared with themselves
   for (isamp = 0; isamp < nsample1; isamp++) {
-    jstart = (iflag2 == 1) ? 0 : isamp+1;
+    jstart = (iflag2 ? 0 : isamp+1);
     for (jsamp = jstart; jsamp < nsample2; jsamp++) {
-      if (gflag == 1) {
+      if (gflag) {
         use_pair[isamp][jsamp] = 0;
         for (ipair = 0; ipair < ngood; ipair++) {
           if ( (strcmp(good_pair[0][ipair], sample1[isamp]) == 0 &&
@@ -433,7 +438,7 @@ int hmmibd_c(Rcpp::List param_list) {
         }
       }
       else {
-        if (isamp != jsamp || iflag2 == 1) {
+        if (isamp != jsamp || iflag2) {
           use_pair[isamp][jsamp] = 1;
         }
       }
@@ -444,7 +449,7 @@ int hmmibd_c(Rcpp::List param_list) {
   iline = -1;
   while (fgets(newLine1, linesize, inf1) != NULL) {
     newLine1[strcspn(newLine1, "\r\n")] = 0;
-    if (iflag2 == 1) {
+    if (iflag2) {
       if(fgets(newLine2, linesize, inf2) != NULL) {;
       newLine2[strcspn(newLine2, "\r\n")] = 0;
       } else {
@@ -467,7 +472,7 @@ int hmmibd_c(Rcpp::List param_list) {
         freq1[isnp] = (double *)malloc((max_all+1) * sizeof(double));
         assert(freq1[isnp] != NULL);
       }
-      if (iflag2 == 1) {
+      if (iflag2) {
         for (isamp = 0; isamp < nsample2; isamp++) {
           geno2[isamp] = (int *)realloc(geno2[isamp], 2*max_snp*sizeof(int));
           assert(geno2[isamp] != NULL);
@@ -478,7 +483,7 @@ int hmmibd_c(Rcpp::List param_list) {
           freq2[isnp] = (double *)malloc((max_all+1) * sizeof(double));
           assert(freq2[isnp] != NULL);
         }
-      }   // end if iflag2 == 1
+      }   // end if iflag2
       else {
         geno2 = geno1;
         freq2 = freq1;
@@ -534,10 +539,10 @@ int hmmibd_c(Rcpp::List param_list) {
         }
       }
     } // end parsing input line
-    if (freq_flag1 != 1 && totall1 == 0) {killit = 1;}   // no valid calls to calculate frequency
+    if (!freq_flag1 && totall1 == 0) {killit = 1;}   // no valid calls to calculate frequency
 
     // Parse line, pop2
-    if (iflag2 == 1) {
+    if (iflag2) {
       for (running = newLine2, itoken = 0; (token = strsep(&running, "\t")) != NULL; itoken++) {
         if (itoken == 0) {
           chr2 = strtol(token, &erp, 10);
@@ -577,12 +582,12 @@ int hmmibd_c(Rcpp::List param_list) {
           }
         }
       } // end parsing 2nd input line
-      if (freq_flag2 != 1 && totall2 == 0) {killit = 1;}   // no valid calls to calculate frequency
+      if (!freq_flag2 && totall2 == 0) {killit = 1;}   // no valid calls to calculate frequency
     }
     if (chr > nchrom) {killit = 1;}
 
     // if reading freqs from file, read one (pop1)
-    if (freq_flag1 == 1) {
+    if (freq_flag1) {
       // Clear previous frequencies (since might have skipped previous snp via 'continue')
       for (iall = 0; iall <= max_all; iall++) {
         ffreq1[iall] = 0;
@@ -618,7 +623,7 @@ int hmmibd_c(Rcpp::List param_list) {
     }
 
     // if reading freqs from file, read one (pop2)
-    if (freq_flag2 == 1) {
+    if (freq_flag2) {
       // Clear previous frequencies (since might have skipped previous snp via 'continue')
       for (iall = 0; iall <= max_all; iall++) {
         ffreq2[iall] = 0;
@@ -657,14 +662,14 @@ int hmmibd_c(Rcpp::List param_list) {
     maxfreq = 0;
     // process this variant -- calculate allele frequencies for each pop
     for (iall = 0; iall <= max_all; iall++) {
-      if (freq_flag1 == 1) {
+      if (freq_flag1) {
         freq1[nsnp][iall] = ffreq1[iall];
       }
       else {
         freq1[nsnp][iall] = (double) allcount1[iall] / totall1;
       }
-      if (iflag2 == 1) {
-        if (freq_flag2 == 1) {
+      if (iflag2) {
+        if (freq_flag2) {
           freq2[nsnp][iall] = ffreq2[iall];
         }
         else {
@@ -692,7 +697,7 @@ int hmmibd_c(Rcpp::List param_list) {
     for (isamp = 0; isamp < nsample1; isamp++) {
       if (use_sample1[isamp] == 0) {continue;}
       // If 2 pops, need to loop over all combinations, but not if one pop
-      jstart = (iflag2 == 1) ? 0 : isamp+1;
+      jstart = (iflag2 ? 0 : isamp+1);
       for (jsamp = jstart; jsamp < nsample2; jsamp++) {
         if (use_sample2[jsamp] == 0) {continue;}
         if (geno1[isamp][nsnp] != -1 && geno2[jsamp][nsnp] != -1) {
@@ -726,7 +731,7 @@ int hmmibd_c(Rcpp::List param_list) {
   ipair = 0;
   for (isamp = 0; isamp < nsample1; isamp++) {
     if (use_sample1[isamp] == 0) {continue;}
-    jstart = (iflag2 == 1) ? 0 : isamp+1;
+    jstart = (iflag2 ? 0 : isamp+1);
     for (jsamp = jstart; jsamp < nsample2; jsamp++) {
       if (use_sample2[jsamp] == 0) {continue;}
       sum = diff[ipair] + same_min[ipair];
@@ -768,7 +773,7 @@ int hmmibd_c(Rcpp::List param_list) {
   ipair = 0;
   for (isamp = 0; isamp < nsample1; isamp++) {
     if (use_sample1[isamp] == 0) {continue;}
-    jstart = (iflag2 == 1) ? 0 : isamp+1;
+    jstart = (iflag2 ? 0 : isamp+1);
     for (jsamp = jstart; jsamp < nsample2; jsamp++) {
       if (use_sample2[jsamp] == 0) {continue;}
       sum = diff[ipair] + same_min[ipair];
@@ -959,7 +964,7 @@ int hmmibd_c(Rcpp::List param_list) {
           }
           pi[0] = count_ibd_fb / (count_ibd_fb + count_dbd_fb);
           k_rec *= trans_obs / trans_pred;
-          if (nflag == 1 && k_rec > k_rec_max) {k_rec = k_rec_max;}
+          if (nflag && k_rec > k_rec_max) {k_rec = k_rec_max;}
           // ad hoc attempt to avoid being trapped in extremum
           if (iter < niter-1 && finish_fit == 0) {
             if (pi[0] < 1e-5) {pi[0] = 1e-5;}
@@ -969,7 +974,7 @@ int hmmibd_c(Rcpp::List param_list) {
           pi[1] = 1 - pi[0];
           delpi = pi[0] - last_pi;
           delk = k_rec - last_krec;
-          if (nflag == 1 && k_rec > k_rec_max) {delk = k_rec_max - last_krec;}
+          if (nflag && k_rec > k_rec_max) {delk = k_rec_max - last_krec;}
           delprob = max_phi - last_prob;
           last_pi = pi[0];
           last_krec = k_rec;
@@ -1009,4 +1014,61 @@ int hmmibd_c(Rcpp::List param_list) {
   fclose(outf);
 
   return(0);
+}
+
+void parse_parameters(
+    Rcpp::List& param_list,
+    bool& freq_flag1, std::string& freq_file1,
+    bool& freq_flag2, std::string& freq_file2,
+    bool& bflag, std::string& bad_file,
+    bool& gflag, std::string& good_file,
+    bool& mflag, int& niter,
+    bool& nflag, double& k_rec_max,
+    bool& iflag1, std::string& data_file1,
+    bool& iflag2, std::string& data_file2,
+    bool& oflag, std::string& out_filebase)
+{
+  if (param_list["f"] != R_NilValue){
+    freq_flag1 = true;
+    freq_file1 = (const char*)param_list["f"];
+    Rprintf("freq_file1 = '%s'\n", freq_file1.c_str());
+  }
+  if (param_list["F"] != R_NilValue){
+    freq_flag2 = true;
+    freq_file2 = (const char*)param_list["F"];
+    Rprintf("freq_file2 = '%s'\n", freq_file2.c_str());
+  }
+  if (param_list["b"] != R_NilValue){
+    bflag = true;
+    bad_file = (const char*)param_list["b"];
+    Rprintf("bad_file = '%s'\n", bad_file.c_str());
+  }
+  if (param_list["g"] != R_NilValue){
+    gflag = true;
+    good_file = (const char*)param_list["g"];
+    Rprintf("good_file = '%s'\n", good_file.c_str());
+  }
+  if (param_list["m"] != R_NilValue){
+    mflag = true;
+    niter = Rcpp::as<int>(param_list["m"]);
+  }
+  if (param_list["n"] != R_NilValue){
+    nflag = true;
+    k_rec_max = Rcpp::as<double>(param_list["n"]);
+  }
+  if (param_list["i"] != R_NilValue){
+    iflag1 = true;
+    data_file1 = (const char*)param_list["i"];
+    Rprintf("data_file1 = '%s'\n", data_file1.c_str());
+  }
+  if (param_list["I"] != R_NilValue){
+    iflag2 = true;
+    data_file2 = (const char*)param_list["I"];
+    Rprintf("data_file2 = '%s'\n", data_file2.c_str());
+  }
+  if (param_list["o"] != R_NilValue){
+    oflag = true;
+    out_filebase = (const char*)param_list["o"];
+    Rprintf("out_filebase = '%s'\n", out_filebase.c_str());
+  }
 }
