@@ -72,7 +72,8 @@ int hmmibd_c(Rcpp::List param_list) {
   int *traj, add_seq, nsample_use2;
   int nsample_use1, nsnp, ipair, npair, isnp, chrlen, *pos, *psi[2], max, iline;
   int *nmiss_bypair=NULL, totall1, totall2, *start_chr=NULL, *end_chr=NULL, is, maxlen;
-  int **use_pair=NULL, *nall=NULL, killit, nuse_pair=0, gi, gj, delpos;
+  bool **use_pair = nullptr;
+  int *nall=NULL, killit, nuse_pair=0, gi, gj, delpos;
   int ntri=0, ibad, nbad, start_snp, ex_all=0, last_snp;
   int fpos=0, fchr=0, iter, ntrans, finish_fit;
   int prev_chrom, ngood, nskipped=0, nsite, jstart;
@@ -273,7 +274,7 @@ int hmmibd_c(Rcpp::List param_list) {
   assert(use_sample1);
   discord = new double*[nsample1];
   assert(discord);
-  use_pair = new int*[nsample1];  // nsamp1 x nsamp2
+  use_pair = new bool*[nsample1];  // nsamp1 x nsamp2
   assert(use_pair);
   for (isamp = 0; isamp < nsample1; isamp++) {
     geno1[isamp] = new int[max_snp];
@@ -304,7 +305,7 @@ int hmmibd_c(Rcpp::List param_list) {
   }
 
   // Note: using newLine1 for both files until we start reading genotypes. This way newLine2 only
-  //  has to be allocated once, after both headers have been read and the line length possibly increased
+  // has to be allocated once, after both headers have been read and the line length possibly increased
   if (iflag2) {
     if(fgets(newLine1, linesize, inf2) != NULL){ // header2
     while (strlen(newLine1) > (unsigned long) linesize-2) {
@@ -353,7 +354,7 @@ int hmmibd_c(Rcpp::List param_list) {
   }
 
   for (isamp = 0; isamp < nsample1; isamp++) {
-    use_pair[isamp] = new int[nsample2];
+    use_pair[isamp] = new bool[nsample2];
     assert(use_pair[isamp]);
     discord[isamp] = new double[nsample2];
     assert(discord[isamp] != NULL);
@@ -422,19 +423,19 @@ int hmmibd_c(Rcpp::List param_list) {
     jstart = (iflag2 ? 0 : isamp+1);
     for (jsamp = jstart; jsamp < nsample2; jsamp++) {
       if (gflag) {
-        use_pair[isamp][jsamp] = 0;
+        use_pair[isamp][jsamp] = false;
         for (ipair = 0; ipair < ngood; ipair++) {
           if ( (strcmp(good_pair[0][ipair], sample1[isamp]) == 0 &&
                strcmp(good_pair[1][ipair], sample2[jsamp]) == 0) ||
                (strcmp(good_pair[0][ipair], sample2[jsamp]) == 0 &&
                strcmp(good_pair[1][ipair], sample1[isamp]) == 0) ) {
-            use_pair[isamp][jsamp] = 1;
+            use_pair[isamp][jsamp] = true;
           }
         }
       }
       else {
         if (isamp != jsamp || iflag2) {
-          use_pair[isamp][jsamp] = 1;
+          use_pair[isamp][jsamp] = true;
         }
       }
     }
@@ -736,10 +737,10 @@ int hmmibd_c(Rcpp::List param_list) {
       else {
         discord[isamp][jsamp] = (double) diff[ipair] / sum;
       }
-      if (use_pair[isamp][jsamp] == 1) {
+      if (use_pair[isamp][jsamp]) {
         if (discord[isamp][jsamp] >  max_discord || sum < min_inform ||
             discord[isamp][jsamp] < min_discord) {
-          use_pair[isamp][jsamp] = 0;
+          use_pair[isamp][jsamp] = false;
         }
         else {
           nuse_pair++;
@@ -772,7 +773,7 @@ int hmmibd_c(Rcpp::List param_list) {
     for (jsamp = jstart; jsamp < nsample2; jsamp++) {
       if (use_sample2[jsamp] == 0) {continue;}
       sum = diff[ipair] + same_min[ipair];
-      if (use_pair[isamp][jsamp] == 1) {
+      if (use_pair[isamp][jsamp]) {
         last_prob = 0;
         last_pi = pi[0] = pinit[0];  // initialize with prior
         pi[1] = pinit[1];
