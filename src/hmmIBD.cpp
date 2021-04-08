@@ -15,8 +15,9 @@ void parse_parameters(
     bool& iflag2, std::string& data_file2,
     bool& oflag, std::string& out_filebase);
 
-FILE* open_frequency_file(bool flag, std::string& filename);
-FILE* open_input_file(bool flag, std::string& filename);
+FILE* open_frequency_file(bool flag, const std::string& filename);
+FILE* open_input_file(bool flag, const std::string& filename);
+FILE* open_output_file(const std::string& filename);
 
 //' @title
 //' hmmIBD
@@ -230,13 +231,10 @@ int hmmibd_c(Rcpp::List param_list) {
   inf1 = open_input_file(true, data_file1);
   inf2 = open_input_file(iflag2, data_file2);
 
-  file = out_filebase + ".hmm.txt";
-  outf = fopen(file.c_str(), "w");
-  if (!outf) {REprintf("Could not open output file %s\n", file.c_str()); Rcpp::stop("");}
+  outf = open_output_file(out_filebase + ".hmm.txt");
   fprintf(outf, "sample1\tsample2\tchr\tstart\tend\tdifferent\tNsnp\n");
-  file = out_filebase + ".hmm_fract.txt";
-  pf = fopen(file.c_str(), "w");
-  if (!pf) {REprintf("Could not open output file %s\n", file.c_str()); Rcpp::stop("");}
+
+  pf = open_output_file(out_filebase + ".hmm_fract.txt");
   fprintf(pf, "sample1\tsample2\tN_informative_sites\tdiscordance\tlog_p\tN_fit_iteration\tN_generation");
   fprintf(pf, "\tN_state_transition\tseq_shared_best_traj\tfract_sites_IBD\tfract_vit_sites_IBD\n");
 
@@ -245,7 +243,7 @@ int hmmibd_c(Rcpp::List param_list) {
     while (strlen(newLine1) > (unsigned long) linesize-2) {
       fseek(inf1, 0, 0);
       linesize *= 2;
-      free(newLine1);
+      delete [] newLine1;
       newLine1 = new char[linesize+1];
       if(fgets(newLine1, linesize, inf1)) { // header1
         REprintf("Could not read string from stream %s\n", inf1);
@@ -310,7 +308,7 @@ int hmmibd_c(Rcpp::List param_list) {
     while (strlen(newLine1) > (unsigned long) linesize-2) {
       fseek(inf2, 0, 0);
       linesize *= 2;
-      free(newLine1);
+      delete [] newLine1;
       newLine1 = new char[linesize+1];
       if(!fgets(newLine1, linesize, inf2)) { // header2
         REprintf("Could not read string from stream %s\n", inf2);
@@ -324,7 +322,7 @@ int hmmibd_c(Rcpp::List param_list) {
 
     newLine2 = new char[linesize+1];
     newLine1[strcspn(newLine1, "\r\n")] = 0;
-    free(head);
+    delete [] head;
     head = new char[linesize+1];
     assert(head);
     strcpy(head, newLine1);
@@ -1068,7 +1066,7 @@ void parse_parameters(
   }
 }
 
-FILE* open_frequency_file(bool flag, std::string& filename)
+FILE* open_frequency_file(bool flag, const std::string& filename)
 {
     FILE* file = nullptr;
 
@@ -1083,7 +1081,7 @@ FILE* open_frequency_file(bool flag, std::string& filename)
   return file;
 }
 
-FILE* open_input_file(bool flag, std::string& filename)
+FILE* open_input_file(bool flag, const std::string& filename)
 {
   FILE* file = nullptr;
 
@@ -1094,6 +1092,18 @@ FILE* open_input_file(bool flag, std::string& filename)
           Rcpp::stop("");
       }
   }
+
+  return file;
+}
+
+FILE* open_output_file(const std::string& filename)
+{
+    FILE* file = fopen(filename.c_str(), "w");
+
+    if (!file) {
+        REprintf("Could not open output file %s\n", filename.c_str());
+        Rcpp::stop("");
+    }
 
   return file;
 }
