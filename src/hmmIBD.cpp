@@ -15,7 +15,8 @@ void parse_parameters(
     bool& iflag2, std::string& data_file2,
     bool& oflag, std::string& out_filebase);
 
-FILE* open_frequency_file(bool freq_flag2, std::string& freq_file2);
+FILE* open_frequency_file(bool flag, std::string& filename);
+FILE* open_input_file(bool flag, std::string& filename);
 
 //' @title
 //' hmmIBD
@@ -130,43 +131,43 @@ int hmmibd_c(Rcpp::List param_list) {
   ff1 = open_frequency_file(freq_flag1, freq_file1);
   ff2 = open_frequency_file(freq_flag2, freq_file2);
 
-  bad_samp = (char **)malloc(max_bad * sizeof(char*));
-  good_pair[0] = (char **)malloc(max_good * sizeof(char*));
-  good_pair[1] = (char **)malloc(max_good * sizeof(char*));
-  newLine1 =(char *) malloc((linesize+1) * sizeof(char));
-  assert(newLine1 != NULL);
-  nall = (int *)malloc(max_snp * sizeof(int));
-  freq1 = (double **)malloc(max_snp * sizeof(double*));
-  pos = (int *)malloc(max_snp * sizeof(int));
-  start_chr = (int *)malloc((nchrom+1) * sizeof(int));
-  end_chr = (int *)calloc(nchrom+1, sizeof(int));
+  bad_samp = new char*[max_bad];
+  good_pair[0] = new char*[max_good];
+  good_pair[1] = new char*[max_good];
+  newLine1 = new char[linesize+1];
+  assert(newLine1);
+  nall = new int[max_snp];
+  freq1 = new double*[max_snp];
+  pos = new int[max_snp];
+  start_chr = new int[nchrom+1];
+  end_chr = new int[nchrom+1];
   for (isnp = 0; isnp < max_snp; isnp++) {
-    freq1[isnp] = (double *)malloc((max_all+1) * sizeof(double));
+    freq1[isnp] = new double[max_all+1];
   }
-  ffreq1 = (double *)malloc((max_all+1) * sizeof(double));
+  ffreq1 = new double[max_all+1];
   for (chr = 1; chr <= nchrom; chr++) {
     start_chr[chr] = 10000000;
     end_chr[chr] = -1;
   }
   for (isamp = 0; isamp < max_bad; isamp++) {
-    bad_samp[isamp] = (char *)malloc(64 * sizeof(char));
+    bad_samp[isamp] = new char[64];
   }
   for (isamp = 0; isamp < max_good; isamp++) {
-    good_pair[0][isamp] = (char *)calloc(64, sizeof(char));
-    good_pair[1][isamp] = (char *)calloc(64, sizeof(char));
+    good_pair[0][isamp] = new char[64];
+    good_pair[1][isamp] = new char[64];
   }
   if (iflag2) {
-    allcount2 = (int *)malloc((max_all+1) * sizeof(int));
-    freq2 = (double **)malloc(max_snp * sizeof(double*));
+    allcount2 = new int[max_all+1];
+    freq2 = new double*[max_snp];
     for (isnp = 0; isnp < max_snp; isnp++) {
-      freq2[isnp] = (double *)malloc((max_all+1) * sizeof(double));
+      freq2[isnp] = new double[max_all+1];
     }
-    ffreq2 = (double *)malloc((max_all+1) * sizeof(double));
+    ffreq2 = new double[max_all+1];
   }
   else {
     allcount2 = allcount1;
     freq2 = freq1;
-    ffreq2 = NULL;
+    ffreq2 = nullptr;
   }
 
   ngood = nbad = 0;
@@ -184,7 +185,7 @@ int hmmibd_c(Rcpp::List param_list) {
         if (nbad == max_bad) {
           bad_samp = (char **)realloc(bad_samp, 2*max_bad*sizeof(char*));
           for (isamp = max_bad; isamp < 2*max_bad; isamp++) {
-            bad_samp[isamp] = (char *)malloc(64 * sizeof(char));
+            bad_samp[isamp] = new char[64];
           }
           max_bad *= 2;
         }
@@ -216,8 +217,8 @@ int hmmibd_c(Rcpp::List param_list) {
           good_pair[0] = (char **)realloc(good_pair[0], 2*max_good*sizeof(char*));
           good_pair[1] = (char **)realloc(good_pair[1], 2*max_good*sizeof(char*));
           for (isamp = max_good; isamp < 2*max_good; isamp++) {
-            good_pair[0][isamp] = (char *)calloc(64, sizeof(char));
-            good_pair[1][isamp] = (char *)calloc(64, sizeof(char));
+            good_pair[0][isamp] = new char[64];
+            good_pair[1][isamp] = new char[64];
           }
           max_good *= 2;
         }
@@ -226,15 +227,12 @@ int hmmibd_c(Rcpp::List param_list) {
     }
   }
 
-  inf1 = fopen(data_file1.c_str(), "r");
-  if (inf1 == NULL) {REprintf("Could not open input file %s\n", data_file1.c_str()); Rcpp::stop("");}
-  if (iflag2) {
-    inf2 = fopen(data_file2.c_str(), "r");
-    if (inf2 == NULL) {REprintf("Could not open input file %s\n", data_file2.c_str()); Rcpp::stop("");}
-  }
+  inf1 = open_input_file(true, data_file1);
+  inf2 = open_input_file(iflag2, data_file2);
+
   file = out_filebase + ".hmm.txt";
   outf = fopen(file.c_str(), "w");
-  if (outf == NULL) {REprintf("Could not open output file %s\n", file.c_str()); Rcpp::stop("");}
+  if (!outf) {REprintf("Could not open output file %s\n", file.c_str()); Rcpp::stop("");}
   fprintf(outf, "sample1\tsample2\tchr\tstart\tend\tdifferent\tNsnp\n");
   file = out_filebase + ".hmm_fract.txt";
   pf = fopen(file.c_str(), "w");
@@ -248,7 +246,7 @@ int hmmibd_c(Rcpp::List param_list) {
       fseek(inf1, 0, 0);
       linesize *= 2;
       free(newLine1);
-      newLine1 = (char *)malloc((linesize+1) * sizeof(char));
+      newLine1 = new char[linesize+1];
       if(fgets(newLine1, linesize, inf1) == NULL) { // header1
         REprintf("Could not read string from stream %s\n", inf1);
         Rcpp::stop("");
@@ -260,28 +258,28 @@ int hmmibd_c(Rcpp::List param_list) {
   }
 
   newLine1[strcspn(newLine1, "\r\n")] = 0;
-  head = (char *)malloc((linesize+1) * sizeof(char));
-  assert(head != NULL);
+  head = new char[linesize+1];
+  assert(head);
   strcpy(head, newLine1);
   for (running = newLine1, itoken = 0; (token = strsep(&running, "\t")) != NULL; itoken++) {
     if (itoken > 1) {nsample1++;}
   }
 
-  sample1 = (char **)malloc(nsample1 * sizeof(char*));
-  assert(sample1 != NULL);
-  geno1 = (int **)malloc(nsample1 * sizeof(int*));
-  assert(geno1 != NULL);
-  use_sample1 = (int *)malloc(nsample1 * sizeof(int));
-  assert(use_sample1 != NULL);
-  discord = (double **)malloc(nsample1 * sizeof(double*));
-  assert(discord != NULL);
-  use_pair = (int **)malloc(nsample1 * sizeof(int*));   // nsamp1 x nsamp2
-  assert(use_pair != NULL);
+  sample1 = new char*[nsample1];
+  assert(sample1);
+  geno1 = new int*[nsample1];
+  assert(geno1);
+  use_sample1 = new int[nsample1];
+  assert(use_sample1);
+  discord = new double*[nsample1];
+  assert(discord);
+  use_pair = new int*[nsample1];  // nsamp1 x nsamp2
+  assert(use_pair);
   for (isamp = 0; isamp < nsample1; isamp++) {
-    geno1[isamp] = (int *)malloc(max_snp * sizeof(int));
-    assert(geno1[isamp] != NULL);
-    sample1[isamp] = (char *)malloc(64 * sizeof(char));
-    assert(sample1[isamp] != NULL);
+    geno1[isamp] = new int[max_snp];
+    assert(geno1[isamp]);
+    sample1[isamp] = new char[64];
+    assert(sample1[isamp]);
   }
   prev_chrom = -1;
 
@@ -313,7 +311,7 @@ int hmmibd_c(Rcpp::List param_list) {
       fseek(inf2, 0, 0);
       linesize *= 2;
       free(newLine1);
-      newLine1 = (char *)malloc((linesize+1) * sizeof(char));
+      newLine1 = new char[linesize+1];
       if(fgets(newLine1, linesize, inf2) == NULL) { // header2
         REprintf("Could not read string from stream %s\n", inf2);
         Rcpp::stop("");
@@ -324,27 +322,27 @@ int hmmibd_c(Rcpp::List param_list) {
       Rcpp::stop("");
     }
 
-    newLine2 = (char *)malloc((linesize+1) * sizeof(char));
+    newLine2 = new char[linesize+1];
     newLine1[strcspn(newLine1, "\r\n")] = 0;
     free(head);
-    head = (char *)malloc((linesize+1) * sizeof(char));
-    assert(head != NULL);
+    head = new char[linesize+1];
+    assert(head);
     strcpy(head, newLine1);
     for (running = newLine1, itoken = 0; (token = strsep(&running, "\t")) != NULL; itoken++) {
       if (itoken > 1) {nsample2++;}
     }
 
-    sample2 = (char **)malloc(nsample2 * sizeof(char*));
-    assert(sample2 != NULL);
-    geno2 = (int **)malloc(nsample2 * sizeof(int*));
-    assert(geno2 != NULL);
-    use_sample2 = (int *)malloc(nsample2 * sizeof(int));
-    assert(use_sample2 != NULL);
+    sample2 = new char*[nsample2];
+    assert(sample2);
+    geno2 = new int*[nsample2];
+    assert(geno2);
+    use_sample2 = new int[nsample2];
+    assert(use_sample2);
     for (isamp = 0; isamp < nsample2; isamp++) {
-      geno2[isamp] = (int *)malloc(max_snp * sizeof(int));
-      assert(geno2[isamp] != NULL);
-      sample2[isamp] = (char *)malloc(64 * sizeof(char));
-      assert(sample2[isamp] != NULL);
+      geno2[isamp] = new int[max_snp];
+      assert(geno2[isamp]);
+      sample2[isamp] = new char[64];
+      assert(sample2[isamp]);
     }
   }
   else {
@@ -355,9 +353,9 @@ int hmmibd_c(Rcpp::List param_list) {
   }
 
   for (isamp = 0; isamp < nsample1; isamp++) {
-    use_pair[isamp] = (int *)calloc(nsample2, sizeof(int));
-    assert(use_pair[isamp] != NULL);
-    discord[isamp] = (double *)malloc(nsample2 * sizeof(double));
+    use_pair[isamp] = new int[nsample2];
+    assert(use_pair[isamp]);
+    discord[isamp] = new double[nsample2];
     assert(discord[isamp] != NULL);
   }
 
@@ -414,9 +412,9 @@ int hmmibd_c(Rcpp::List param_list) {
     Rprintf("  pop2 nsample: %d used: %d", nsample2, nsample_use2);}
   Rprintf(" Expected pairs: %d\n", npair_report);
 
-  nmiss_bypair = (int *)calloc(npair, sizeof(int));
-  same_min = (int *)calloc(npair, sizeof(int));
-  diff = (int *)calloc(npair, sizeof(int));
+  nmiss_bypair = new int[npair];
+  same_min = new int[npair];
+  diff = new int[npair];
 
   // All pairs are to be used by default, unless we've read a file of good pairs
   //   Except single-pop samples should not be compared with themselves
@@ -466,7 +464,7 @@ int hmmibd_c(Rcpp::List param_list) {
       freq1 = (double **)realloc(freq1, 2*max_snp*sizeof(double*));
       assert(freq1 != NULL);
       for (isnp = max_snp; isnp < 2*max_snp; isnp++) {
-        freq1[isnp] = (double *)malloc((max_all+1) * sizeof(double));
+        freq1[isnp] = new double[max_all+1];
         assert(freq1[isnp] != NULL);
       }
       if (iflag2) {
@@ -477,7 +475,7 @@ int hmmibd_c(Rcpp::List param_list) {
         freq2 = (double **)realloc(freq2, 2*max_snp*sizeof(double*));
         assert(freq2 != NULL);
         for (isnp = max_snp; isnp < 2*max_snp; isnp++) {
-          freq2[isnp] = (double *)malloc((max_all+1) * sizeof(double));
+          freq2[isnp] = new double[max_all+1];
           assert(freq2[isnp] != NULL);
         }
       }   // end if iflag2
@@ -758,14 +756,14 @@ int hmmibd_c(Rcpp::List param_list) {
     if (end_chr[chr] - start_chr[chr] + 1 > maxlen) {maxlen = end_chr[chr] - start_chr[chr] + 1;}
   }
   for (is = 0; is < 2; is++) {
-    psi[is] = (int *)malloc(maxlen * sizeof(int));
-    phi[is] = (double *)malloc(maxlen * sizeof(double));
-    b[is] = (double *)malloc(maxlen * sizeof(double));
-    alpha[is] = (double *)malloc(maxlen * sizeof(double));
-    beta[is] = (double *)malloc(maxlen * sizeof(double));
+    psi[is] = new int[maxlen];
+    phi[is] = new double[maxlen];
+    b[is] = new double[maxlen];
+    alpha[is] = new double[maxlen];
+    beta[is] = new double[maxlen];
   }
-  scale = (double *)malloc(maxlen * sizeof(double));
-  traj = (int *)malloc(maxlen * sizeof(int));
+  scale = new double[maxlen];
+  traj = new int[maxlen];
 
   ipair = 0;
   for (isamp = 0; isamp < nsample1; isamp++) {
@@ -1082,5 +1080,20 @@ FILE* open_frequency_file(bool flag, std::string& filename)
         }
     }
   
+  return file;
+}
+
+FILE* open_input_file(bool flag, std::string& filename)
+{
+  FILE* file = nullptr;
+
+  if (flag) {
+      file = fopen(filename.c_str(), "r");
+      if (!file) {
+          REprintf("Could not open input file %s\n", filename.c_str());
+          Rcpp::stop("");
+      }
+  }
+
   return file;
 }
