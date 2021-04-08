@@ -137,7 +137,6 @@ int hmmibd_c(Rcpp::List param_list) {
   good_pair[0] = new char*[max_good];
   good_pair[1] = new char*[max_good];
   newLine1 = new char[linesize+1];
-  assert(newLine1);
   nall = new int[max_snp];
   freq1 = new double*[max_snp];
   pos = new int[max_snp];
@@ -257,27 +256,19 @@ int hmmibd_c(Rcpp::List param_list) {
 
   newLine1[strcspn(newLine1, "\r\n")] = 0;
   head = new char[linesize+1];
-  assert(head);
   strcpy(head, newLine1);
   for (running = newLine1, itoken = 0; (token = strsep(&running, "\t")); ++itoken) {
     if (itoken > 1) {nsample1++;}
   }
 
   sample1 = new char*[nsample1];
-  assert(sample1);
   geno1 = new int*[nsample1];
-  assert(geno1);
   use_sample1 = new int[nsample1];
-  assert(use_sample1);
   discord = new double*[nsample1];
-  assert(discord);
   use_pair = new bool*[nsample1];  // nsamp1 x nsamp2
-  assert(use_pair);
   for (isamp = 0; isamp < nsample1; isamp++) {
     geno1[isamp] = new int[max_snp];
-    assert(geno1[isamp]);
     sample1[isamp] = new char[64];
-    assert(sample1[isamp]);
   }
   prev_chrom = -1;
 
@@ -324,23 +315,17 @@ int hmmibd_c(Rcpp::List param_list) {
     newLine1[strcspn(newLine1, "\r\n")] = 0;
     delete [] head;
     head = new char[linesize+1];
-    assert(head);
     strcpy(head, newLine1);
     for (running = newLine1, itoken = 0; (token = strsep(&running, "\t")); ++itoken) {
       if (itoken > 1) {nsample2++;}
     }
 
     sample2 = new char*[nsample2];
-    assert(sample2);
     geno2 = new int*[nsample2];
-    assert(geno2);
     use_sample2 = new int[nsample2];
-    assert(use_sample2);
     for (isamp = 0; isamp < nsample2; isamp++) {
       geno2[isamp] = new int[max_snp];
-      assert(geno2[isamp]);
       sample2[isamp] = new char[64];
-      assert(sample2[isamp]);
     }
   }
   else {
@@ -352,9 +337,7 @@ int hmmibd_c(Rcpp::List param_list) {
 
   for (isamp = 0; isamp < nsample1; isamp++) {
     use_pair[isamp] = new bool[nsample2];
-    assert(use_pair[isamp]);
     discord[isamp] = new double[nsample2];
-    assert(discord[isamp]);
   }
 
   // Parse header2, store sample names after screening for excluded sample ids
@@ -452,29 +435,21 @@ int hmmibd_c(Rcpp::List param_list) {
     }
     if (nsnp == max_snp) {
       nall = (int *)realloc(nall, 2*max_snp*sizeof(int));
-      assert(nall);
       pos = (int *)realloc(pos, 2*max_snp*sizeof(int));
-      assert(pos);
       for (isamp = 0; isamp < nsample1; isamp++) {
         geno1[isamp] = (int *)realloc(geno1[isamp], 2*max_snp*sizeof(int));
-        assert(geno1[isamp]);
       }
       freq1 = (double **)realloc(freq1, 2*max_snp*sizeof(double*));
-      assert(freq1);
       for (isnp = max_snp; isnp < 2*max_snp; isnp++) {
         freq1[isnp] = new double[max_all+1];
-        assert(freq1[isnp]);
       }
       if (iflag2) {
         for (isamp = 0; isamp < nsample2; isamp++) {
           geno2[isamp] = (int *)realloc(geno2[isamp], 2*max_snp*sizeof(int));
-          assert(geno2[isamp]);
         }
         freq2 = (double **)realloc(freq2, 2*max_snp*sizeof(double*));
-        assert(freq2);
         for (isnp = max_snp; isnp < 2*max_snp; isnp++) {
           freq2[isnp] = new double[max_all+1];
-          assert(freq2[isnp]);
         }
       }   // end if iflag2
       else {
