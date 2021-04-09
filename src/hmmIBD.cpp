@@ -1,5 +1,6 @@
-
+#include <fstream>
 #include <string>
+#include <vector>
 
 #include "hmmIBD.h"
 
@@ -18,6 +19,9 @@ void parse_parameters(
 FILE* open_frequency_file(bool flag, const std::string& filename);
 FILE* open_input_file(bool flag, const std::string& filename);
 FILE* open_output_file(const std::string& filename);
+bool load_bad_samples(const std::string& filename, std::vector<std::string>& samples);
+std::vector<std::string> split(const std::string& string, const char delimiter, bool collapse=true);
+bool load_good_samples(const std::string& filename, std::vector<std::pair<std::string, std::string>>& samples);
 
 //' @title
 //' hmmIBD
@@ -35,19 +39,19 @@ FILE* open_output_file(const std::string& filename);
 int hmmibd_c(Rcpp::List param_list) {
 
   /* User-settable parameters */
-  double eps = Rcpp::as<double>(param_list["eps"]);         // error rate in genotype calls
-  int min_inform = Rcpp::as<int>(param_list["min_inform"]); // minimum number of informative sites in a pairwise
+  double eps         = Rcpp::as<double>(param_list["eps"]);         // error rate in genotype calls
+  int min_inform     = Rcpp::as<int>(param_list["min_inform"]);     // minimum number of informative sites in a pairwise
   //  comparison (those w/ minor allele)
   double min_discord = Rcpp::as<double>(param_list["min_discord"]); // minimum discordance in comparison; set > 0 to skip identical pairs
   double max_discord = Rcpp::as<double>(param_list["max_discord"]); // set < 1 to skip unrelated pairs
-  int nchrom = Rcpp::as<int>(param_list["nchrom"]); // 14 for falciparum
-  int min_snp_sep = Rcpp::as<int>(param_list["min_snp_sep"]); // skip next snp(s) if too close to last one; in bp
-  double rec_rate = Rcpp::as<double>(param_list["rec_rate"]); // 7.4e-5 cM/bp or 13.5 kb/cM Miles et al, Genome Res 26:1288-1299 (2016)
+  int nchrom         = Rcpp::as<int>(param_list["nchrom"]);         // 14 for falciparum
+  int min_snp_sep    = Rcpp::as<int>(param_list["min_snp_sep"]);    // skip next snp(s) if too close to last one; in bp
+  double rec_rate    = Rcpp::as<double>(param_list["rec_rate"]);    // 7.4e-5 cM/bp or 13.5 kb/cM Miles et al, Genome Res 26:1288-1299 (2016)
   //  const double rec_rate = 5.8e-7;   // 5.8e-5 cM/bp, or 17kb/cM
 
   /* end user-settable parameters */
-  const double fit_thresh_dpi = .001;
-  const double fit_thresh_dk = .01;
+  const double fit_thresh_dpi   = .001;
+  const double fit_thresh_dk    = .01;
   const double fit_thresh_drelk = .001;
 
   double k_rec_init = 1.0;          // starting value for N generation parameter
@@ -56,11 +60,10 @@ int hmmibd_c(Rcpp::List param_list) {
   int niter = 5;    // maximum number of iterations of fit; can be overriden by -m
   int max_snp = 30000;
   char* erp;
-  int max_bad = 100;
-  int max_good = 200;
   int linesize = 4000;
   char *newLine1, *newLine2, *token, *running, **sample1, **sample2, *head;
-  char **bad_samp=nullptr, **good_pair[2]={nullptr};
+  std::vector<std::string> bad_samp;
+  std::vector<std::pair<std::string, std::string>> good_pairs;
   int itoken, nsample1=0, nsample2=0, isamp, chr, sum, iall, all, js, snp_ind;
   int **geno1, **geno2, chr2, pos2, majall, npair_report;
   double **discord, pright, seq_ibd_fb=0, seq_dbd_fb=0, p_ibd, fmean, fmeani, fmeanj;
@@ -75,7 +78,7 @@ int hmmibd_c(Rcpp::List param_list) {
   int *nmiss_bypair=nullptr, totall1, totall2, *start_chr=nullptr, *end_chr=nullptr, is, maxlen;
   bool **use_pair = nullptr;
   int *nall=nullptr, killit, nuse_pair=0, gi, gj, delpos;
-  int ntri=0, ibad, nbad, start_snp, ex_all=0, last_snp;
+  int ntri=0, ibad, start_snp, ex_all=0, last_snp;
   int fpos=0, fchr=0, iter, ntrans, finish_fit;
   int prev_chrom, ngood, nskipped=0, nsite, jstart;
   int count_ibd_vit, count_dbd_vit;
@@ -133,9 +136,6 @@ int hmmibd_c(Rcpp::List param_list) {
   ff1 = open_frequency_file(freq_flag1, freq_file1);
   ff2 = open_frequency_file(freq_flag2, freq_file2);
 
-  bad_samp = new char*[max_bad];
-  good_pair[0] = new char*[max_good];
-  good_pair[1] = new char*[max_good];
   newLine1 = new char[linesize+1];
   nall = new int[max_snp];
   freq1 = new double*[max_snp];
@@ -149,13 +149,6 @@ int hmmibd_c(Rcpp::List param_list) {
   for (chr = 1; chr <= nchrom; chr++) {
     start_chr[chr] = 10000000;
     end_chr[chr] = -1;
-  }
-  for (isamp = 0; isamp < max_bad; isamp++) {
-    bad_samp[isamp] = new char[64];
-  }
-  for (isamp = 0; isamp < max_good; isamp++) {
-    good_pair[0][isamp] = new char[64];
-    good_pair[1][isamp] = new char[64];
   }
   if (iflag2) {
     allcount2 = new int[max_all+1];
@@ -171,61 +164,9 @@ int hmmibd_c(Rcpp::List param_list) {
     ffreq2 = nullptr;
   }
 
-  ngood = nbad = 0;
-  if (bflag) {
-    inf1 = fopen(bad_file.c_str(), "r");
-    if (!inf1) {
-      REprintf("Could not open file of bad samples: %s\n", bad_file.c_str());
-      bflag = false;
-    }
-    else {
-      while (fgets(newLine1, linesize, inf1)) {
-        newLine1[strcspn(newLine1, "\r\n")] = 0;
-        strncpy(bad_samp[nbad], newLine1, 63);
-        nbad++;
-        if (nbad == max_bad) {
-          bad_samp = (char **)realloc(bad_samp, 2*max_bad*sizeof(char*));
-          for (isamp = max_bad; isamp < 2*max_bad; isamp++) {
-            bad_samp[isamp] = new char[64];
-          }
-          max_bad *= 2;
-        }
-      }
-      fclose(inf1);
-    }
-  }
-
-  if (gflag) {
-    inf1 = fopen(good_file.c_str(), "r");
-    if (!inf1) {
-      REprintf("Could not open file of good sample pairs: %s\n", good_file.c_str());
-      gflag = false;
-    }
-    else {
-      while (fgets(newLine1, linesize, inf1)) {
-        newLine1[strcspn(newLine1, "\r\n")] = 0;
-        for (running = newLine1, itoken = 0; (token = strsep(&running, "\t")) && (itoken < 2); ++itoken) {
-          strncpy(good_pair[itoken][ngood], token, 63);
-        }
-        if (good_pair[1][ngood][0] == 0) {
-          REprintf("Skipped line with only one record in file of good sample pairs: %s.\n",
-                   newLine1);
-          continue;
-        }
-        ngood++;
-        if (ngood == max_good) {
-          good_pair[0] = (char **)realloc(good_pair[0], 2*max_good*sizeof(char*));
-          good_pair[1] = (char **)realloc(good_pair[1], 2*max_good*sizeof(char*));
-          for (isamp = max_good; isamp < 2*max_good; isamp++) {
-            good_pair[0][isamp] = new char[64];
-            good_pair[1][isamp] = new char[64];
-          }
-          max_good *= 2;
-        }
-      }
-      fclose(inf1);
-    }
-  }
+  ngood = 0;
+  if (bflag) bflag = load_bad_samples(bad_file, bad_samp);
+  if (gflag) gflag = load_good_samples(good_file, good_pairs);
 
   inf1 = open_input_file(true, data_file1);
   inf2 = open_input_file(iflag2, data_file2);
@@ -278,8 +219,8 @@ int hmmibd_c(Rcpp::List param_list) {
     if (itoken > 1) {
       strncpy(sample1[isamp], token, 63);
       use_sample1[isamp] = 1;
-      for (ibad = 0; ibad < nbad; ibad++) {
-        if (strcmp(token, bad_samp[ibad]) == 0) {
+      for (ibad = 0; ibad < bad_samp.size(); ibad++) {
+        if (bad_samp[ibad] == token) {
           use_sample1[isamp] = 0;
           Rprintf("killing sample %s\n", token);
           break;
@@ -347,8 +288,8 @@ int hmmibd_c(Rcpp::List param_list) {
       if (itoken > 1) {
         strncpy(sample2[isamp], token, 63);
         use_sample2[isamp] = 1;
-        for (ibad = 0; ibad < nbad; ibad++) {
-          if (strcmp(token, bad_samp[ibad]) == 0) {
+        for (ibad = 0; ibad < bad_samp.size(); ibad++) {
+          if (bad_samp[ibad] == token) {
             use_sample2[isamp] = 0;
             Rprintf("killing sample %s\n", token);
             break;
@@ -404,13 +345,11 @@ int hmmibd_c(Rcpp::List param_list) {
     for (jsamp = jstart; jsamp < nsample2; jsamp++) {
       if (gflag) {
         use_pair[isamp][jsamp] = false;
-        for (ipair = 0; ipair < ngood; ipair++) {
-          if ( (strcmp(good_pair[0][ipair], sample1[isamp]) == 0 &&
-               strcmp(good_pair[1][ipair], sample2[jsamp]) == 0) ||
-               (strcmp(good_pair[0][ipair], sample2[jsamp]) == 0 &&
-               strcmp(good_pair[1][ipair], sample1[isamp]) == 0) ) {
-            use_pair[isamp][jsamp] = true;
-          }
+        for ( ipair = 0; ipair < good_pairs.size(); ++ipair ) {
+            if ( ((good_pairs[ipair].first == sample1[isamp]) && (good_pairs[ipair].second == sample2[jsamp])) ||
+                 ((good_pairs[ipair].first == sample2[jsamp]) && (good_pairs[ipair].second == sample1[isamp])) ) {
+                use_pair[isamp][jsamp] = true;
+            }
         }
       }
       else {
@@ -1081,4 +1020,80 @@ FILE* open_output_file(const std::string& filename)
     }
 
   return file;
+}
+
+bool load_bad_samples(const std::string& filename, std::vector<std::string>& samples)
+{
+    bool wasSuccessful = true;
+
+    std::ifstream input;
+    input.open(filename);
+
+    if (!input.is_open()) {
+        REprintf("Could not open file of bad samples: %s\n", filename.c_str());
+        wasSuccessful = false;
+    }
+    else {
+        std::string line;
+        while (std::getline(input, line)) {
+            samples.push_back(line);
+        }
+        input.close();
+    }
+
+    return wasSuccessful;
+}
+
+bool load_good_samples(const std::string& filename, std::vector<std::pair<std::string, std::string>>& samples)
+{
+    bool wasSuccessful = true;
+
+    std::ifstream input;
+    input.open(filename);
+
+    if (!input.is_open()) {
+        REprintf("Could not open file of good sample pairs: %s\n", filename.c_str());
+        wasSuccessful = false;
+    }
+    else {
+        std::string line;
+        while (std::getline(input, line)) {
+            std::vector<std::string> tokens = split(line, '\t');
+            switch (tokens.size()) {
+                case 1:
+                  REprintf("Skipped line with only one record in file of good sample pairs: %s.\n", line.c_str());
+                  break;
+
+                case 2:
+                  samples.push_back(std::pair<std::string, std::string>(tokens[0], tokens[1]));
+                  break;
+
+                default:
+                  REprintf("Encountered bad line in %s: '%s'\n", filename.c_str(), line.c_str());
+                  break;
+            }
+        }
+
+        input.close();
+    }
+
+    return wasSuccessful;
+}
+
+std::vector<std::string> split(const std::string& string, const char delimiter, bool collapse)
+{
+    std::vector<std::string> splits;
+
+    size_t start = 0;
+    size_t stop = std::string::npos;
+    do {
+        stop = string.find(delimiter, start);
+        // std::cout << "start = " << start << ", stop = " << stop << std::endl;
+        if ( (stop-start > 0) || !collapse) {
+            splits.push_back(string.substr(start, stop-start));
+        }
+        start = stop != std::string::npos ? stop + 1 : std::string::npos;
+    } while (start != std::string::npos);
+
+    return splits;
 }
