@@ -22,7 +22,7 @@ FILE* open_output_file(const std::string& filename);
 bool load_bad_samples(const std::string& filename, std::vector<std::string>& samples);
 std::vector<std::string> split(const std::string& string, const char delimiter, bool collapse=true);
 bool load_good_samples(const std::string& filename, std::vector<std::pair<std::string, std::string>>& samples);
-
+void read_text_file(const std::string& filename, std::vector<std::string>& contents);
 //' @title
 //' hmmIBD
 //' @description
@@ -178,29 +178,11 @@ int hmmibd_c(Rcpp::List param_list) {
   fprintf(pf, "sample1\tsample2\tN_informative_sites\tdiscordance\tlog_p\tN_fit_iteration\tN_generation");
   fprintf(pf, "\tN_state_transition\tseq_shared_best_traj\tfract_sites_IBD\tfract_vit_sites_IBD\n");
 
-  // Check line size
-  if(fgets(newLine1, linesize, inf1)) { // header1
-    while (strlen(newLine1) > (unsigned long) linesize-2) {
-      fseek(inf1, 0, 0);
-      linesize *= 2;
-      delete [] newLine1;
-      newLine1 = new char[linesize+1];
-      if(fgets(newLine1, linesize, inf1)) { // header1
-        REprintf("Could not read string from stream %s\n", inf1);
-        Rcpp::stop("");
-      }
-    }
-  } else {
-    REprintf("Could not read string from stream %s\n", inf1);
-    Rcpp::stop("");
-  }
+  std::vector<std::string> file1_data;
+  read_text_file(data_file1, file1_data);
 
-  newLine1[strcspn(newLine1, "\r\n")] = 0;
-  head = new char[linesize+1];
-  strcpy(head, newLine1);
-  for (running = newLine1, itoken = 0; (token = strsep(&running, "\t")); ++itoken) {
-    if (itoken > 1) {nsample1++;}
-  }
+  // Ignore first two columns, 'chrom' and 'pos'
+  nsample1 = split(file1_data[0], '\t').size() - 2;
 
   sample1 = new char*[nsample1];
   geno1 = new int*[nsample1];
@@ -1096,4 +1078,18 @@ std::vector<std::string> split(const std::string& string, const char delimiter, 
     } while (start != std::string::npos);
 
     return splits;
+}
+
+void read_text_file(const std::string& filename, std::vector<std::string>& contents)
+{
+    std::ifstream file;
+    file.open(filename);
+
+    if (file.is_open()) {
+        std::string line;
+        while (std::getline(file, line)) {
+            contents.push_back(line);
+        }
+        file.close();
+    }
 }
