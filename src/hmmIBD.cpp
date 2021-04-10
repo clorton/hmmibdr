@@ -80,7 +80,8 @@ int hmmibd_c(Rcpp::List param_list) {
   int *nall=nullptr, nuse_pair=0, gi, gj, delpos;
   bool killit;
   int ntri=0, start_snp, ex_all=0, last_snp;
-  int fpos=0, fchr=0, iter, ntrans, finish_fit;
+  int fpos=0, fchr=0, iter, ntrans;
+  bool finish_fit;
   int prev_chrom, ngood, nskipped=0, nsite;
   int count_ibd_vit, count_dbd_vit;
 
@@ -227,27 +228,27 @@ int hmmibd_c(Rcpp::List param_list) {
         discord[isamp] = new double[nsample2];
     }
 
-  display_parameters(niter,
-                     min_snp_sep,
-                     min_inform,
-                     min_discord,
-                     max_discord,
-                     eps,
-                     iflag2,
-                     data_file1,
-                     data_file2,
-                     freq_flag1,
-                     freq_file1,
-                     freq_flag2,
-                     freq_file2,
-                     nflag,
-                     k_rec_max,
-                     nsample_use1,
-                     nsample_use2,
-                     nsample1,
-                     nsample2,
-                     npair,
-                     npair_report);
+    display_parameters(niter,
+                      min_snp_sep,
+                      min_inform,
+                      min_discord,
+                      max_discord,
+                      eps,
+                      iflag2,
+                      data_file1,
+                      data_file2,
+                      freq_flag1,
+                      freq_file1,
+                      freq_flag2,
+                      freq_file2,
+                      nflag,
+                      k_rec_max,
+                      nsample_use1,
+                      nsample_use2,
+                      nsample1,
+                      nsample2,
+                      npair,
+                      npair_report);
 
     nmiss_bypair = new int[npair];
     same_min = new int[npair];
@@ -259,7 +260,7 @@ int hmmibd_c(Rcpp::List param_list) {
     nsnp = 0;
     iline = -1;
     // clorton
-    newLine2 = new char[1024];
+    newLine2 = new char[linesize+1];
     fgets(newLine1, linesize, inf1);                // We aren't reading the header line any more...
     if (iflag2) fgets(newLine1, linesize, inf2);    // We aren't reading the header line any more...
     // clorton
@@ -268,6 +269,7 @@ int hmmibd_c(Rcpp::List param_list) {
         newLine1[strcspn(newLine1, "\r\n")] = 0;
 
         if (iflag2) {
+
             if(fgets(newLine2, linesize, inf2)) {
                 newLine2[strcspn(newLine2, "\r\n")] = 0;
             } else {
@@ -277,6 +279,7 @@ int hmmibd_c(Rcpp::List param_list) {
         }
 
         if (nsnp == max_snp) {
+
             nall = (int *)realloc(nall, 2*max_snp*sizeof(int));
             pos = (int *)realloc(pos, 2*max_snp*sizeof(int));
 
@@ -291,6 +294,7 @@ int hmmibd_c(Rcpp::List param_list) {
             }
 
             if (iflag2) {
+
                 for (int isamp = 0; isamp < nsample2; ++isamp) {
                     geno2[isamp] = (int *)realloc(geno2[isamp], 2*max_snp*sizeof(int));
                 }
@@ -319,23 +323,30 @@ int hmmibd_c(Rcpp::List param_list) {
 
         // Parse line, pop1
         for (running = newLine1, itoken = 0; (token = strsep(&running, "\t")); ++itoken) {
+
             if (itoken == 0) {
+
                 chr = strtol(token, &erp, 10);
+
                 if (token == erp) {
                     REprintf("Invalid chromosome %s (must be integer)\n", token);
                     Rcpp::stop("");
                 }
             }
             else if (itoken == 1) {
+
                 pos[nsnp] = strtol(token, &erp, 10);
+
                 if (token == erp) {
                     REprintf("Invalid position %s (must be integer)\n", token);
                     Rcpp::stop("");
                 }
+
                 if ( (chr == prev_chrom && pos[nsnp] < pos[nsnp-1]) || chr < prev_chrom) {
                     REprintf("Variants are out of order\n");
                     Rcpp::stop("");
                 }
+
                 if (nsnp > 0 && chr == prev_chrom && pos[nsnp] - pos[nsnp-1] < min_snp_sep) {
                     ++nskipped;
                     killit = true;
@@ -343,17 +354,22 @@ int hmmibd_c(Rcpp::List param_list) {
                 }
             }
             else {
+
                 all = strtol(token, &erp, 10);
+
                 if (token == erp) {
                     REprintf("Invalid allele %s (must be integer)\n", token);
                     Rcpp::stop("");
                 }
+
                 if (all > max_all) {
                     killit = true;
                     ++ex_all;
                     break;
                 }
+
                 geno1[itoken-2][nsnp] = all;
+
                 if (use_sample1[itoken-2]) {
                     if (all >= 0) {
                         allcount1[all]++;
@@ -369,49 +385,61 @@ int hmmibd_c(Rcpp::List param_list) {
 
         // Parse line, pop2
         if (iflag2) {
+
             for (running = newLine2, itoken = 0; (token = strsep(&running, "\t")); ++itoken) {
+
                 if (itoken == 0) {
+
                     chr2 = strtol(token, &erp, 10);
+
                     if (token == erp) {
                         REprintf("Invalid chromosome %s (must be integer)\n", token);
                         Rcpp::stop("");
                     }
                 }
                 else if (itoken == 1) {
+
                     pos2 = strtol(token, &erp, 10);
+
                     if (token == erp) {
                         REprintf("Invalid position %s (must be integer)\n", token);
                         Rcpp::stop("");
                     }
+
                     if (pos2 != pos[nsnp] || chr2 != chr) {
                         REprintf("Data files do not agree on SNPs\n");
                         Rcpp::stop("");
                     }
                 }
                 else {
+
                     all = strtol(token, &erp, 10);
+
                     if (token == erp) {
                         REprintf("Invalid allele %s (must be integer)\n", token);
                         Rcpp::stop("");
                     }
+
                     if (all > max_all) {
                         killit = true;
                         ++ex_all;
                         break;
                     }
+
                     geno2[itoken-2][nsnp] = all;
+
                     if (use_sample2[itoken-2]) {
                         if (all >= 0) {
                           allcount2[all]++;
                           ++totall2;
-                      }
+                        }
                     }
                 }
             } // end parsing 2nd input line
 
             if (!freq_flag2 && totall2 == 0) {
                 killit = true; // no valid calls to calculate frequency
-                }
+            }
         }
 
         if (chr > nchrom) {
@@ -420,102 +448,127 @@ int hmmibd_c(Rcpp::List param_list) {
 
         // if reading freqs from file, read one (pop1)
         if (freq_flag1) {
-          // Clear previous frequencies (since might have skipped previous snp via 'continue')
-          for (iall = 0; iall <= max_all; ++iall) {
-            ffreq1[iall] = 0;
-          }
 
-          if (!fgets(newLine1, linesize, ff1)) {
-            REprintf("Could not read string from stream %s\n", ff1);
-            Rcpp::stop("");
-          };
-          fpos = fchr = 0;
-          for (running = newLine1, itoken = 0; (token = strsep(&running, "\t")); ++itoken) {
-            if (itoken == 0) {
-              fchr = strtol(token, &erp, 10);
-              if (token == erp) {
-                REprintf("Invalid chromosome %s (must be integer)\n", token);
-                Rcpp::stop("");
-              }
+            // Clear previous frequencies (since might have skipped previous snp via 'continue')
+            for (iall = 0; iall <= max_all; ++iall) {
+                ffreq1[iall] = 0;
             }
-            else if (itoken == 1) {
-              fpos = strtol(token, &erp, 10);
-              if (token == erp) {
-                REprintf("Invalid position %s (must be integer)\n", token);
+
+            if (!fgets(newLine1, linesize, ff1)) {
+                REprintf("Could not read string from stream %s\n", ff1);
                 Rcpp::stop("");
-              }
             }
-            else if (itoken > 1) {ffreq1[itoken-2] = strtod(token, nullptr);}
-          }
-          if (fchr != chr || fpos != pos[nsnp]) {
-            REprintf("Mismatch between data file and frequency file. Data file (chr/pos): %d/%d vs freq file: %d/%d\n",
-                    chr, pos[nsnp], fchr, fpos);
-            Rcpp::stop("");
-          }
+
+            fpos = fchr = 0;
+
+            for (running = newLine1, itoken = 0; (token = strsep(&running, "\t")); ++itoken) {
+
+                if (itoken == 0) {
+
+                    fchr = strtol(token, &erp, 10);
+
+                    if (token == erp) {
+                        REprintf("Invalid chromosome %s (must be integer)\n", token);
+                        Rcpp::stop("");
+                    }
+                }
+                else if (itoken == 1) {
+
+                  fpos = strtol(token, &erp, 10);
+
+                  if (token == erp) {
+                      REprintf("Invalid position %s (must be integer)\n", token);
+                      Rcpp::stop("");
+                  }
+                }
+                else if (itoken > 1) {ffreq1[itoken-2] = strtod(token, nullptr);}
+            }
+
+            if (fchr != chr || fpos != pos[nsnp]) {
+                REprintf("Mismatch between data file and frequency file. Data file (chr/pos): %d/%d vs freq file: %d/%d\n",
+                          chr, pos[nsnp], fchr, fpos);
+                Rcpp::stop("");
+            }
         }
 
         // if reading freqs from file, read one (pop2)
         if (freq_flag2) {
-          // Clear previous frequencies (since might have skipped previous snp via 'continue')
-          for (iall = 0; iall <= max_all; ++iall) {
-            ffreq2[iall] = 0;
-          }
-          if (!fgets(newLine2, linesize, ff2)) {
-            REprintf("Could not read string from stream %s\n", ff2);
-            Rcpp::stop("");
-          };
-          fpos = fchr = 0;
-          for (running = newLine2, itoken = 0; (token = strsep(&running, "\t")); ++itoken) {
-            if (itoken == 0) {
-              fchr = strtol(token, &erp, 10);
-              if (token == erp) {
-                REprintf("Invalid chromosome %s (must be integer)\n", token);
-                Rcpp::stop("");
-              }
+
+            // Clear previous frequencies (since might have skipped previous snp via 'continue')
+            for (iall = 0; iall <= max_all; ++iall) {
+                ffreq2[iall] = 0;
             }
-            else if (itoken == 1) {
-              fpos = strtol(token, &erp, 10);
-              if (token == erp) {
-                REprintf("Invalid position %s (must be integer)\n", token);
+
+            if (!fgets(newLine2, linesize, ff2)) {
+                REprintf("Could not read string from stream %s\n", ff2);
                 Rcpp::stop("");
-              }
             }
-            else if (itoken > 1) {ffreq2[itoken-2] = strtod(token, nullptr);}
-          }
-          if (fchr != chr || fpos != pos[nsnp]) {
-            REprintf("Mismatch between data file and frequency file. Data file (chr/pos): %d/%d vs freq file: %d/%d\n",
-                    chr, pos[nsnp], fchr, fpos);
-            Rcpp::stop("");
-          }
+
+            fpos = fchr = 0;
+
+            for (running = newLine2, itoken = 0; (token = strsep(&running, "\t")); ++itoken) {
+
+                if (itoken == 0) {
+
+                    fchr = strtol(token, &erp, 10);
+
+                    if (token == erp) {
+                        REprintf("Invalid chromosome %s (must be integer)\n", token);
+                        Rcpp::stop("");
+                    }
+                }
+                else if (itoken == 1) {
+
+                    fpos = strtol(token, &erp, 10);
+
+                    if (token == erp) {
+                        REprintf("Invalid position %s (must be integer)\n", token);
+                        Rcpp::stop("");
+                    }
+                }
+                else if (itoken > 1) {ffreq2[itoken-2] = strtod(token, nullptr);}
+            }
+
+            if (fchr != chr || fpos != pos[nsnp]) {
+                REprintf("Mismatch between data file and frequency file. Data file (chr/pos): %d/%d vs freq file: %d/%d\n",
+                          chr, pos[nsnp], fchr, fpos);
+                Rcpp::stop("");
+            }
         }
 
         nall[nsnp] = 0;
         majall = -1;
         maxfreq = 0;
+
         // process this variant -- calculate allele frequencies for each pop
         for (iall = 0; iall <= max_all; ++iall) {
-          if (freq_flag1) {
-            freq1[nsnp][iall] = ffreq1[iall];
-          }
-          else {
-            freq1[nsnp][iall] = (double) allcount1[iall] / totall1;
-          }
-          if (iflag2) {
-            if (freq_flag2) {
-              freq2[nsnp][iall] = ffreq2[iall];
+
+            if (freq_flag1) {
+                freq1[nsnp][iall] = ffreq1[iall];
             }
             else {
-              freq2[nsnp][iall] = (double) allcount2[iall] / totall2;
+                freq1[nsnp][iall] = (double) allcount1[iall] / totall1;
             }
-          }
-          fmean = (freq1[nsnp][iall] + freq2[nsnp][iall]) / 2;
-          if (fmean > maxfreq) {
-            maxfreq = fmean;
-            majall = iall;
-          }
-          if (fmean > 0) {
-            nall[nsnp]++;
-          }
+
+            if (iflag2) {
+                if (freq_flag2) {
+                    freq2[nsnp][iall] = ffreq2[iall];
+                }
+                else {
+                    freq2[nsnp][iall] = (double) allcount2[iall] / totall2;
+                }
+            }
+
+            fmean = (freq1[nsnp][iall] + freq2[nsnp][iall]) / 2;
+
+            if (fmean > maxfreq) {
+                maxfreq = fmean;
+                majall = iall;
+            }
+
+            if (fmean > 0) {
+                nall[nsnp]++;
+            }
         }
 
         if (killit) {continue;}
@@ -523,7 +576,7 @@ int hmmibd_c(Rcpp::List param_list) {
         prev_chrom = chr;
 
         if (nall[nsnp] > 2) {
-          ++ntri;
+            ++ntri;
         }
 
         // Tabulate differences by pair for calculating discordance
@@ -565,7 +618,6 @@ int hmmibd_c(Rcpp::List param_list) {
 
             ++nsnp;
         }
-
     }
 
     Rprintf("Variants skipped for spacing: %d\n", nskipped);
@@ -598,6 +650,7 @@ int hmmibd_c(Rcpp::List param_list) {
                     if ( (discord[isamp][jsamp] >  max_discord) ||
                          (sum < min_inform) ||
                          (discord[isamp][jsamp] < min_discord) ) {
+
                         use_pair[isamp][jsamp] = false;
                     }
                     else {
@@ -612,19 +665,23 @@ int hmmibd_c(Rcpp::List param_list) {
         Rprintf("sample pairs analyzed (filtered for discordance and informative markers): %d\n", nuse_pair);
     }
 
-  maxlen = 0;
-  for (chr = 1; chr <= nchrom; ++chr) {
-    if (end_chr[chr] - start_chr[chr] + 1 > maxlen) {maxlen = end_chr[chr] - start_chr[chr] + 1;}
-  }
-  for (is = 0; is < 2; ++is) {
-    psi[is] = new int[maxlen];
-    phi[is] = new double[maxlen];
-    b[is] = new double[maxlen];
-    alpha[is] = new double[maxlen];
-    beta[is] = new double[maxlen];
-  }
-  scale = new double[maxlen];
-  traj = new int[maxlen];
+    maxlen = 0;
+    for (chr = 1; chr <= nchrom; ++chr) {
+        if (end_chr[chr] - start_chr[chr] + 1 > maxlen) {
+            maxlen = end_chr[chr] - start_chr[chr] + 1;
+        }
+    }
+
+    for (is = 0; is < 2; ++is) {
+        psi[is] = new int[maxlen];
+        phi[is] = new double[maxlen];
+        b[is] = new double[maxlen];
+        alpha[is] = new double[maxlen];
+        beta[is] = new double[maxlen];
+    }
+
+    scale = new double[maxlen];
+    traj = new int[maxlen];
 
     {
         int ipair = 0;
@@ -645,7 +702,7 @@ int hmmibd_c(Rcpp::List param_list) {
                     last_pi = pi[0] = pinit[0];  // initialize with prior
                     pi[1] = pinit[1];
                     last_krec = k_rec = k_rec_init;
-                    finish_fit = 0;
+                    finish_fit = false;
 
                     for (iter = 0; iter < niter; ++iter) {
 
@@ -663,10 +720,12 @@ int hmmibd_c(Rcpp::List param_list) {
                             chrlen = pos[end_chr[chr]] - pos[start_chr[chr]];
 
                             for (isnp = start_chr[chr]; isnp <= end_chr[chr]; ++isnp) {
+
                                 snp_ind = isnp - start_chr[chr];
                                 gi = geno1[isamp][isnp];
                                 gj = geno2[jsamp][isnp];
                                 pright = 1 - eps * (nall[isnp] - 1);
+
                                 if (gi == -1 || gj == -1) {
                                     // O = n (missing data)
                                     b[0][snp_ind] = b[1][snp_ind] = 1.0;
@@ -709,18 +768,21 @@ int hmmibd_c(Rcpp::List param_list) {
                                     a[1][0] = 1 - pi[1] - (1 - pi[1]) * exp(-ptrans);
                                     a[0][0] = 1 - a[0][1];
                                     a[1][1] = 1 - a[1][0];
+
                                     for (js = 0; js < 2; ++js) {    // index over state of current snp
+
                                         maxval = -10000000;
                                         alpha[js][snp_ind] = scale[snp_ind] = 0;
+
                                         for (is = 0; is < 2; ++is) {    // index over state of previous snp
 
-                                          if (phi[is][snp_ind-1] + log(a[is][js]) > maxval ) {
-                                              maxval = phi[is][snp_ind-1] + log(a[is][js]);
-                                              psi[js][snp_ind] = is;
-                                          }
+                                            if (phi[is][snp_ind-1] + log(a[is][js]) > maxval ) {
+                                                maxval = phi[is][snp_ind-1] + log(a[is][js]);
+                                                psi[js][snp_ind] = is;
+                                            }
 
-                                          phi[js][snp_ind] = maxval + log(b[js][snp_ind]);
-                                          alpha[js][snp_ind] += alpha[is][snp_ind-1] * a[is][js] * b[js][snp_ind];
+                                            phi[js][snp_ind] = maxval + log(b[js][snp_ind]);
+                                            alpha[js][snp_ind] += alpha[is][snp_ind-1] * a[is][js] * b[js][snp_ind];
                                         }
 
                                         scale[snp_ind] += alpha[js][snp_ind];
@@ -747,12 +809,14 @@ int hmmibd_c(Rcpp::List param_list) {
                             beta[0][snp_ind] = beta[1][snp_ind] = 1;
 
                             for (isnp = end_chr[chr]-1; isnp >= start_chr[chr]; isnp--) {
+
                                 snp_ind = isnp - start_chr[chr];
                                 ptrans = k_rec * rec_rate * (pos[isnp+1] - pos[isnp]);
                                 a[0][1] = 1 - pi[0] - (1 - pi[0]) * exp(-ptrans);
                                 a[1][0] = 1 - pi[1] - (1 - pi[1]) * exp(-ptrans);
                                 a[0][0] = 1 - a[0][1];
                                 a[1][1] = 1 - a[1][0];
+
                                 for (is = 0; is < 2; ++is) {    // index over state of current snp
 
                                     beta[is][snp_ind] = 0;
@@ -817,7 +881,7 @@ int hmmibd_c(Rcpp::List param_list) {
 
                             // print final Viterbi trajectory
                             // start
-                            if (iter == niter - 1 || finish_fit != 0) {
+                            if (iter == niter - 1 || finish_fit) {
                                 if (nsite > 0) {
 
                                     fprintf(outf, "%s\t%s\t%d\t%d", sample1[isamp].c_str(), sample2[jsamp].c_str(), chr, pos[0+start_chr[chr]]);
@@ -862,7 +926,7 @@ int hmmibd_c(Rcpp::List param_list) {
                         }  // end chrom loop
 
                         // quit if fit converged on previous iteration; otherwise, update parameters
-                        if (finish_fit != 0) {break;}
+                        if (finish_fit) {break;}
 
                         if ((count_ibd_fb + count_dbd_fb) == 0) {
                             REprintf("Insufficient information to estimate parameters.\n");
@@ -876,7 +940,7 @@ int hmmibd_c(Rcpp::List param_list) {
                         if (nflag && k_rec > k_rec_max) {k_rec = k_rec_max;}
 
                         // ad hoc attempt to avoid being trapped in extremum
-                        if (iter < niter-1 && finish_fit == 0) {
+                        if (iter < niter-1 && !finish_fit) {
 
                             if (pi[0] < 1e-5) {pi[0] = 1e-5;}
                             else if (pi[0] > 1- 1e-5) {pi[0] = 1 - 1e-5;}
@@ -898,7 +962,8 @@ int hmmibd_c(Rcpp::List param_list) {
                         // Evaluate fit
                         if ( (fabs(delpi) < fit_thresh_dpi) &&
                             (fabs(delk) < fit_thresh_dk || fabs(delk/k_rec) < fit_thresh_drelk) ) {
-                            finish_fit = 1;
+
+                            finish_fit = true;
                         }
                     }  // end parameter fitting loop
 
@@ -927,10 +992,10 @@ int hmmibd_c(Rcpp::List param_list) {
         }
     }
 
-  fclose(pf);
-  fclose(outf);
+    fclose(pf);
+    fclose(outf);
 
-  return(0);
+    return(0);
 }
 
 void parse_parameters(
