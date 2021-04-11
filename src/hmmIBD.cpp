@@ -55,24 +55,24 @@ int hmmibd_c(Rcpp::List param_list) {
   int max_snp = 30000;
   char* erp;
   int linesize = 4000;
-  char *newLine1, *newLine2, *token, *running;
+  char *newLine2, *running;
   std::vector<std::string> sample1;
   std::vector<std::string> sample2;
   std::vector<std::string> bad_samp;
   std::vector<std::pair<std::string, std::string>> good_pairs;
-  int itoken, nsample1=0, nsample2=0, chr, sum, iall, all, js, snp_ind;
+  int nsample1=0, nsample2=0, chr, sum, iall, all, js, snp_ind;
   int **geno1, **geno2, chr2, pos2, majall, npair_report;
   double **discord, pright, seq_ibd_fb=0, seq_dbd_fb=0, p_ibd, fmean, fmeani, fmeanj;
   double **freq1=nullptr, **freq2=nullptr, *ffreq1=nullptr, *ffreq2=nullptr, xisum, xi[2][2], trans_pred, trans_obs;
   double *phi[2], pinit[2], pi[2], *b[2], a[2][2], ptrans, *alpha[2], *beta[2], *scale;
   double maxval, max_phi=0, max_phiL, seq_ibd, seq_dbd, count_ibd_fb, count_dbd_fb;
   double gamma[2], last_pi=0, last_prob=0, last_krec=0, delpi, delprob, delk, maxfreq;
-  FILE *inf1=nullptr, *inf2=nullptr, *outf=nullptr, *pf=nullptr, *ff1=nullptr, *ff2=nullptr;
+  FILE *inf2=nullptr, *outf=nullptr, *pf=nullptr, *ff1=nullptr, *ff2=nullptr;
   int *diff=nullptr, *same_min=nullptr, *allcount1, *allcount2;
   std::vector<bool> use_sample1;
   std::vector<bool> use_sample2;
   int *traj, add_seq, nsample_use2;
-  int nsample_use1, nsnp, npair, isnp, chrlen, *pos, *psi[2], max, iline;
+  int nsample_use1, nsnp, npair, isnp, chrlen, *pos, *psi[2], max;
   int *nmiss_bypair=nullptr, totall1, totall2, is, maxlen;
   std::vector<int> start_chr;
   std::vector<int> end_chr;
@@ -138,7 +138,6 @@ int hmmibd_c(Rcpp::List param_list) {
   ff1 = open_frequency_file(freq_flag1, freq_file1);
   ff2 = open_frequency_file(freq_flag2, freq_file2);
 
-  newLine1 = new char[linesize+1];
   nall = new int[max_snp];
   freq1 = new double*[max_snp];
   pos = new int[max_snp];
@@ -170,7 +169,6 @@ int hmmibd_c(Rcpp::List param_list) {
   if (bflag) bflag = load_bad_samples(bad_file, bad_samp);
   if (gflag) gflag = load_good_samples(good_file, good_pairs);
 
-  inf1 = open_input_file(true, data_file1);
   inf2 = open_input_file(iflag2, data_file2);
 
   outf = open_output_file(out_filebase + ".hmm.txt");
@@ -258,25 +256,13 @@ int hmmibd_c(Rcpp::List param_list) {
                                good_pairs, sample1, sample2);
 
     nsnp = 0;
-    iline = -1;
     // clorton
     newLine2 = new char[linesize+1];
-    fgets(newLine1, linesize, inf1);                // We aren't reading the header line any more...
-    if (iflag2) fgets(newLine1, linesize, inf2);    // We aren't reading the header line any more...
     // clorton
-    while (fgets(newLine1, linesize, inf1)) {
 
-        newLine1[strcspn(newLine1, "\r\n")] = 0;
+    for ( int iline = 1; iline < file1_data.size(); ++iline ) {
 
-        if (iflag2) {
-
-            if(fgets(newLine2, linesize, inf2)) {
-                newLine2[strcspn(newLine2, "\r\n")] = 0;
-            } else {
-                REprintf("Could not read string from stream %s\n", inf2);
-                Rcpp::stop("");
-            }
-        }
+        const std::string& newLine1 = file1_data[iline];
 
         if (nsnp == max_snp) {
 
@@ -313,7 +299,6 @@ int hmmibd_c(Rcpp::List param_list) {
             max_snp *= 2;
         }  // end reallocating space
 
-        ++iline;
         totall1 = totall2 = 0;
         killit = false;
 
@@ -322,61 +307,74 @@ int hmmibd_c(Rcpp::List param_list) {
         }
 
         // Parse line, pop1
-        for (running = newLine1, itoken = 0; (token = strsep(&running, "\t")); ++itoken) {
+        std::vector<std::string> tokens = split(newLine1, '\t');
+        for ( int itoken = 0; itoken < tokens.size(); ++itoken ) {
 
-            if (itoken == 0) {
+            const std::string& token = tokens[itoken];
 
-                chr = strtol(token, &erp, 10);
-
-                if (token == erp) {
-                    REprintf("Invalid chromosome %s (must be integer)\n", token);
-                    Rcpp::stop("");
-                }
-            }
-            else if (itoken == 1) {
-
-                pos[nsnp] = strtol(token, &erp, 10);
-
-                if (token == erp) {
-                    REprintf("Invalid position %s (must be integer)\n", token);
-                    Rcpp::stop("");
-                }
-
-                if ( (chr == prev_chrom && pos[nsnp] < pos[nsnp-1]) || chr < prev_chrom) {
-                    REprintf("Variants are out of order\n");
-                    Rcpp::stop("");
-                }
-
-                if (nsnp > 0 && chr == prev_chrom && pos[nsnp] - pos[nsnp-1] < min_snp_sep) {
-                    ++nskipped;
-                    killit = true;
-                    break;
-                }
-            }
-            else {
-
-                all = strtol(token, &erp, 10);
-
-                if (token == erp) {
-                    REprintf("Invalid allele %s (must be integer)\n", token);
-                    Rcpp::stop("");
-                }
-
-                if (all > max_all) {
-                    killit = true;
-                    ++ex_all;
-                    break;
-                }
-
-                geno1[itoken-2][nsnp] = all;
-
-                if (use_sample1[itoken-2]) {
-                    if (all >= 0) {
-                        allcount1[all]++;
-                        ++totall1;
+            switch (itoken) {
+                case 0:
+                    {
+                        try {
+                            chr = std::stol(token);
+                        } catch (...) {
+                            REprintf("Invalid chromosome '%s' (must be integer)\n", token.c_str());
+                            Rcpp::stop("");
+                        }
                     }
-                }
+                    break;
+
+                case 1:
+                    {
+                        try {
+                            pos[nsnp] = std::stol(token);
+                        } catch (...) {
+                            REprintf("Invalid position '%s' (must be integer)\n", token.c_str());
+                            Rcpp::stop("");
+                        }
+
+                        if ( (chr == prev_chrom && pos[nsnp] < pos[nsnp-1]) || chr < prev_chrom) {
+                            REprintf("Variants are out of order\n");
+                            Rcpp::stop("");
+                        }
+
+                        if (nsnp > 0 && chr == prev_chrom && pos[nsnp] - pos[nsnp-1] < min_snp_sep) {
+                            ++nskipped;
+                            killit = true;
+                            break;
+                        }
+                    }
+                    break;
+
+                default:
+                    {
+                        try {
+                            all = std::stol(token);
+                        } catch (...) {
+                            REprintf("Invalid allele '%s' (must be integer)\n", token.c_str());
+                            Rcpp::stop("");
+                        }
+
+                        if (all > max_all) {
+                            killit = true;
+                            ++ex_all;
+                            break;
+                        }
+
+                        geno1[itoken-2][nsnp] = all;
+
+                        if (use_sample1[itoken-2]) {
+                            if (all >= 0) {
+                                allcount1[all]++;
+                                ++totall1;
+                            }
+                        }
+                    }
+                    break;
             }
+
+            if (killit) break;
+
         } // end parsing input line
 
         if (!freq_flag1 && totall1 == 0) {
@@ -386,55 +384,63 @@ int hmmibd_c(Rcpp::List param_list) {
         // Parse line, pop2
         if (iflag2) {
 
-            for (running = newLine2, itoken = 0; (token = strsep(&running, "\t")); ++itoken) {
+            const std::string& newLine2 = file2_data[iline];
 
-                if (itoken == 0) {
+            std::vector<std::string> tokens = split(newLine2, '\t');
+            for ( int itoken = 0; itoken < tokens.size(); ++itoken ) {
 
-                    chr2 = strtol(token, &erp, 10);
+                const std::string& token = tokens[itoken];
 
-                    if (token == erp) {
-                        REprintf("Invalid chromosome %s (must be integer)\n", token);
-                        Rcpp::stop("");
-                    }
-                }
-                else if (itoken == 1) {
-
-                    pos2 = strtol(token, &erp, 10);
-
-                    if (token == erp) {
-                        REprintf("Invalid position %s (must be integer)\n", token);
-                        Rcpp::stop("");
-                    }
-
-                    if (pos2 != pos[nsnp] || chr2 != chr) {
-                        REprintf("Data files do not agree on SNPs\n");
-                        Rcpp::stop("");
-                    }
-                }
-                else {
-
-                    all = strtol(token, &erp, 10);
-
-                    if (token == erp) {
-                        REprintf("Invalid allele %s (must be integer)\n", token);
-                        Rcpp::stop("");
-                    }
-
-                    if (all > max_all) {
-                        killit = true;
-                        ++ex_all;
-                        break;
-                    }
-
-                    geno2[itoken-2][nsnp] = all;
-
-                    if (use_sample2[itoken-2]) {
-                        if (all >= 0) {
-                          allcount2[all]++;
-                          ++totall2;
+                switch (itoken) {
+                    case 0:
+                        try {
+                            chr2 = std::stol(token);
+                        } catch (...) {
+                            REprintf("Invalid chromosome '%s' (must be integer)\n", token.c_str());
+                            Rcpp::stop("");
                         }
-                    }
+                        break;
+
+                    case 1:
+                        try {
+                            pos2 = std::stol(token);
+                        } catch (...) {
+                            REprintf("Invalid position '%s' (must be integer)\n", token.c_str());
+                            Rcpp::stop("");
+                        }
+
+                        if (pos2 != pos[nsnp] || chr2 != chr) {
+                            REprintf("Data files do not agree on SNPs\n");
+                            Rcpp::stop("");
+                        }
+                        break;
+
+                    default:
+                        try {
+                            all = std::stol(token);
+                        } catch (...) {
+                            REprintf("Invalid allele '%s' (must be integer)\n", token.c_str());
+                            Rcpp::stop("");
+                        }
+
+                        if (all > max_all) {
+                            killit = true;
+                            ++ex_all;
+                            break;
+                        }
+
+                        geno2[itoken-2][nsnp] = all;
+
+                        if (use_sample2[itoken-2]) {
+                            if (all >= 0) {
+                              allcount2[all]++;
+                              ++totall2;
+                            }
+                        }
+                        break;
                 }
+
+                if (killit) break;
             } // end parsing 2nd input line
 
             if (!freq_flag2 && totall2 == 0) {
@@ -454,6 +460,7 @@ int hmmibd_c(Rcpp::List param_list) {
                 ffreq1[iall] = 0;
             }
 
+            char newLine1[4096];    // clorton
             if (!fgets(newLine1, linesize, ff1)) {
                 REprintf("Could not read string from stream %s\n", ff1);
                 Rcpp::stop("");
@@ -461,6 +468,8 @@ int hmmibd_c(Rcpp::List param_list) {
 
             fpos = fchr = 0;
 
+            int itoken;
+            char *token;
             for (running = newLine1, itoken = 0; (token = strsep(&running, "\t")); ++itoken) {
 
                 if (itoken == 0) {
@@ -506,6 +515,8 @@ int hmmibd_c(Rcpp::List param_list) {
 
             fpos = fchr = 0;
 
+            int itoken;
+            char *token;
             for (running = newLine2, itoken = 0; (token = strsep(&running, "\t")); ++itoken) {
 
                 if (itoken == 0) {
@@ -667,8 +678,9 @@ int hmmibd_c(Rcpp::List param_list) {
 
     maxlen = 0;
     for (chr = 1; chr <= nchrom; ++chr) {
-        if (end_chr[chr] - start_chr[chr] + 1 > maxlen) {
-            maxlen = end_chr[chr] - start_chr[chr] + 1;
+        int length = end_chr[chr] - start_chr[chr] + 1;
+        if (length > maxlen) {
+            maxlen = length;
         }
     }
 
