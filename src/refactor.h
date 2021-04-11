@@ -253,3 +253,424 @@ void determine_pairs_to_compare(int nsample1, bool iflag2, int nsample2, bool gf
         }
     }
 }
+
+void increase_storage(
+    int*& nall,
+    int& max_snp,
+    int*& pos,
+    int nsample1,
+    int** geno1,
+    double**& freq1,
+    int max_all,
+    bool iflag2,
+    int nsample2,
+    int** geno2,
+    double**& freq2
+)
+{
+    nall = (int *)realloc(nall, 2*max_snp*sizeof(int));
+    pos = (int *)realloc(pos, 2*max_snp*sizeof(int));
+
+    for (int isamp = 0; isamp < nsample1; ++isamp) {
+        geno1[isamp] = (int *)realloc(geno1[isamp], 2*max_snp*sizeof(int));
+    }
+
+    freq1 = (double **)realloc(freq1, 2*max_snp*sizeof(double*));
+
+    for (int isnp = max_snp; isnp < 2*max_snp; ++isnp) {
+        freq1[isnp] = new double[max_all+1];
+    }
+
+    if (iflag2) {
+
+        for (int isamp = 0; isamp < nsample2; ++isamp) {
+            geno2[isamp] = (int *)realloc(geno2[isamp], 2*max_snp*sizeof(int));
+        }
+
+        freq2 = (double **)realloc(freq2, 2*max_snp*sizeof(double*));
+
+        for (int isnp = max_snp; isnp < 2*max_snp; ++isnp) {
+            freq2[isnp] = new double[max_all+1];
+        }
+    }   // end if iflag2
+    else {
+        geno2 = geno1;
+        freq2 = freq1;
+    }
+
+    max_snp *= 2;
+}
+
+void parse_input1_line(
+    const std::string& input_line,
+    int&  chromosome,
+    int*  position,
+    int   nsnp,
+    int   previous_chromosome,
+    int   min_snp_sep,
+    int&  nskipped,
+    bool& killit,
+    int&  allele,
+    int   maximum_alleles,
+    int&  excessive_alleles,
+    int** genome,
+    const std::vector<bool>& use_sample,
+    int*  allele_count,
+    int&  total_alleles
+)
+{
+    std::vector<std::string> tokens = split(input_line, '\t');
+    for ( int itoken = 0; itoken < tokens.size(); ++itoken ) {
+
+        const std::string& token = tokens[itoken];
+
+        switch (itoken) {
+            case 0:
+                {
+                    try {
+                        chromosome = std::stol(token);
+                    } catch (...) {
+                        REprintf("Invalid chromosome '%s' (must be integer)\n", token.c_str());
+                        Rcpp::stop("");
+                    }
+                }
+                break;
+
+            case 1:
+                {
+                    try {
+                        position[nsnp] = std::stol(token);
+                    } catch (...) {
+                        REprintf("Invalid position '%s' (must be integer)\n", token.c_str());
+                        Rcpp::stop("");
+                    }
+
+                    if ((chromosome == previous_chromosome && position[nsnp] < position[nsnp - 1]) || chromosome < previous_chromosome) {
+                        REprintf("Variants are out of order\n");
+                        Rcpp::stop("");
+                    }
+
+                    if (nsnp > 0 && chromosome == previous_chromosome && position[nsnp] - position[nsnp - 1] < min_snp_sep) {
+                        ++nskipped;
+                        killit = true;
+                    }
+                }
+                break;
+
+            default:
+                {
+                    try {
+                        allele = std::stol(token);
+                    } catch (...) {
+                        REprintf("Invalid allele '%s' (must be integer)\n", token.c_str());
+                        Rcpp::stop("");
+                    }
+
+                    if (allele > maximum_alleles) {
+                        ++excessive_alleles;
+                        killit = true;
+                    }
+                    else {
+                        genome[itoken - 2][nsnp] = allele;
+
+                        if (use_sample[itoken - 2]) {
+                            if (allele >= 0) {
+                                allele_count[allele]++;
+                                ++total_alleles;
+                            }
+                        }
+                    }
+                }
+                break;
+        }
+
+        if (killit) break;
+    }
+}
+
+void parse_input2_line(
+    const std::string& input_line,
+    int& chromosome,
+    int& position,
+    int* positions,
+    int nsnp,
+    int pop1_chromosome,
+    int& allele,
+    int maximum_alleles,
+    bool& killit,
+    int& excessive_alleles,
+    int** genome,
+    const std::vector<bool>& use_sample,
+    int* allele_count,
+    int& total_alleles
+)
+{
+    std::vector<std::string> tokens = split(input_line, '\t');
+    for ( int itoken = 0; itoken < tokens.size(); ++itoken ) {
+
+        const std::string& token = tokens[itoken];
+
+        switch (itoken) {
+            case 0:
+                try {
+                    chromosome = std::stol(token);
+                } catch (...) {
+                    REprintf("Invalid chromosome '%s' (must be integer)\n", token.c_str());
+                    Rcpp::stop("");
+                }
+                break;
+
+            case 1:
+                try {
+                    position = std::stol(token);
+                } catch (...) {
+                    REprintf("Invalid position '%s' (must be integer)\n", token.c_str());
+                    Rcpp::stop("");
+                }
+
+                if (position != positions[nsnp] || chromosome != pop1_chromosome) {
+                    REprintf("Data files do not agree on SNPs\n");
+                    Rcpp::stop("");
+                }
+                break;
+
+            default:
+                try {
+                    allele = std::stol(token);
+                } catch (...) {
+                    REprintf("Invalid allele '%s' (must be integer)\n", token.c_str());
+                    Rcpp::stop("");
+                }
+
+                if (allele > maximum_alleles) {
+                    ++excessive_alleles;
+                    killit = true;
+                }
+                else {
+                    genome[itoken - 2][nsnp] = allele;
+
+                    if (use_sample[itoken - 2]) {
+                        if (allele >= 0) {
+                            allele_count[allele]++;
+                            ++total_alleles;
+                        }
+                    }
+                }
+                break;
+        }
+
+        if (killit) break;
+    }
+}
+
+void parse_frequency_line(
+    const std::string& input_line,
+    double* frequencies,
+    int max_all,
+    int& fposition,
+    int& fchromosome,
+    int chromosome,
+    int* positions,
+    int nsnp
+)
+{
+    // Clear previous frequencies (since might have skipped previous snp via 'continue')
+    memset(frequencies, 0, (max_all + 1) * sizeof(double));
+
+    fposition = fchromosome = 0;
+
+    std::vector<std::string> tokens = split(input_line, '\t');
+    for ( int itoken = 0; itoken < tokens.size(); ++itoken ) {
+
+        const std::string& token = tokens[itoken];
+
+        switch (itoken) {
+            case 0:
+                try {
+                    fchromosome = std::stol(token);
+                } catch (...) {
+                    REprintf("Invalid chromosome '%s' (must be integer)\n", token.c_str());
+                    Rcpp::stop("");
+                }
+                break;
+
+            case 1:
+                try {
+                    fposition = std::stol(token);
+                } catch (...) {
+                    REprintf("Invalid position '%s' (must be integer)\n", token.c_str());
+                    Rcpp::stop("");
+                }
+                break;
+
+            default:
+                try {
+                    frequencies[itoken - 2] = std::stod(token);
+                } catch (...) {
+                    REprintf("Invalid frequency '%s' (must be numeric)\n", token.c_str());
+                    Rcpp::stop("");
+                }
+                break;
+        }
+    }
+
+    if (fchromosome != chromosome || fposition != positions[nsnp]) {
+        REprintf("Mismatch between data file and frequency file. Data file (chr/pos): %d/%d vs freq file: %d/%d\n",
+                 chromosome, positions[nsnp], fchromosome, fposition);
+        Rcpp::stop("");
+    }
+}
+
+void calculate_allele_frequencies(
+    int maximum_alleles,
+    bool freq_flag1,
+    double** freq1,
+    int nsnp,
+    double* ffreq1,
+    int* pop1_allele_counts,
+    int pop1_total_alleles,
+    bool iflag2,
+    bool freq_flag2,
+    double** freq2,
+    double* ffreq2,
+    int* pop2_allele_counts,
+    int pop2_total_alleles,
+    double& fmean,
+    double& maximum_frequency,
+    int& majall,
+    int* alleles_per_snp
+)
+{
+    // process this variant -- calculate allele frequencies for each pop
+    for (int allele_index = 0; allele_index <= maximum_alleles; ++allele_index) {
+
+        if (freq_flag1) { freq1[nsnp][allele_index] = ffreq1[allele_index]; }
+        else {            freq1[nsnp][allele_index] = (double) pop1_allele_counts[allele_index] / pop1_total_alleles; }
+
+        if (iflag2) {
+            if (freq_flag2) { freq2[nsnp][allele_index] = ffreq2[allele_index]; }
+            else {            freq2[nsnp][allele_index] = (double) pop2_allele_counts[allele_index] / pop2_total_alleles; }
+        }
+
+        fmean = (freq1[nsnp][allele_index] + freq2[nsnp][allele_index]) / 2;
+
+        if (fmean > maximum_frequency) {
+            maximum_frequency = fmean;
+            majall = allele_index;
+        }
+
+        if (fmean > 0) {
+            alleles_per_snp[nsnp]++;
+        }
+    }
+}
+
+void tabulate_differences_by_pair_for_discordance(
+    int pop1_nsamples,
+    const std::vector<bool>& pop1_use_sample,
+    bool pop2_present,
+    int pop2_nsamples,
+    const std::vector<bool>& pop2_use_sample,
+    int** pop1_genome,
+    int** pop2_genome,
+    int majall,
+    int* same_min,
+    int* diff,
+    int* nmiss_bypair,
+    int nsnp,
+    int chromosome,
+    std::vector<int>& start_chromosome,
+    std::vector<int>& end_chromosome
+)
+// Tabulate differences by pair for calculating discordance
+{
+    int ipair = 0;
+    for (int isamp = 0; isamp < pop1_nsamples; ++isamp) {
+
+        if (!pop1_use_sample[isamp]) {continue;}
+
+        // If 2 pops, need to loop over all combinations, but not if one pop
+        int jstart = (pop2_present ? 0 : isamp + 1);
+        for (int jsamp = jstart; jsamp < pop2_nsamples; ++jsamp) {
+
+            if (!pop2_use_sample[jsamp]) {continue;}
+
+            if (pop1_genome[isamp][nsnp] != -1 && pop2_genome[jsamp][nsnp] != -1) {
+                if (pop1_genome[isamp][nsnp] == pop2_genome[jsamp][nsnp]) {
+                    if (pop1_genome[isamp][nsnp] != majall) {
+                        same_min[ipair]++;
+                    }
+                }
+                else {diff[ipair]++;}
+            }
+            else {
+                nmiss_bypair[ipair]++;
+            }
+
+            ++ipair;
+        }
+    }
+
+    if (nsnp < start_chromosome[chromosome]) {
+        start_chromosome[chromosome] = nsnp;
+    }
+
+    if (nsnp > end_chromosome[chromosome]) {
+        end_chromosome[chromosome] = nsnp;
+    }
+}
+
+void filter_pairs_by_discordance_and_markers(
+    int nsample1,
+    const std::vector<bool>& use_sample1,
+    bool iflag2,
+    int nsample2,
+    const std::vector<bool>& use_sample2,
+    int& sum,
+    int* diff,
+    int* same_min,
+    double** discord,
+    bool** use_pair,
+    double max_discord,
+    int min_inform,
+    double min_discord,
+    int& nuse_pair
+)
+{
+    int ipair = 0;
+    for (int isamp = 0; isamp < nsample1; ++isamp) {
+
+        if (!use_sample1[isamp]) {continue;}
+
+        int jstart = (iflag2 ? 0 : isamp+1);
+        for (int jsamp = jstart; jsamp < nsample2; ++jsamp) {
+
+            if (!use_sample2[jsamp]) {continue;}
+
+            sum = diff[ipair] + same_min[ipair];
+
+            if (sum == 0) {
+                discord[isamp][jsamp]  = 0;
+            }
+            else {
+                discord[isamp][jsamp] = (double) diff[ipair] / sum;
+            }
+
+            if (use_pair[isamp][jsamp]) {
+                if ( (discord[isamp][jsamp] >  max_discord) ||
+                      (sum < min_inform) ||
+                      (discord[isamp][jsamp] < min_discord) ) {
+
+                    use_pair[isamp][jsamp] = false;
+                }
+                else {
+                    ++nuse_pair;
+                }
+            }
+
+            ++ipair;
+        }
+    }
+
+    Rprintf("sample pairs analyzed (filtered for discordance and informative markers): %d\n", nuse_pair);
+}

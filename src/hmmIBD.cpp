@@ -32,175 +32,173 @@ void parse_parameters(
 // [[Rcpp::export]]
 int hmmibd_c(Rcpp::List param_list) {
 
-  /* User-settable parameters */
-  double eps         = Rcpp::as<double>(param_list["eps"]);         // error rate in genotype calls
-  int min_inform     = Rcpp::as<int>(param_list["min_inform"]);     // minimum number of informative sites in a pairwise
-  //  comparison (those w/ minor allele)
-  double min_discord = Rcpp::as<double>(param_list["min_discord"]); // minimum discordance in comparison; set > 0 to skip identical pairs
-  double max_discord = Rcpp::as<double>(param_list["max_discord"]); // set < 1 to skip unrelated pairs
-  int nchrom         = Rcpp::as<int>(param_list["nchrom"]);         // 14 for falciparum
-  int min_snp_sep    = Rcpp::as<int>(param_list["min_snp_sep"]);    // skip next snp(s) if too close to last one; in bp
-  double rec_rate    = Rcpp::as<double>(param_list["rec_rate"]);    // 7.4e-5 cM/bp or 13.5 kb/cM Miles et al, Genome Res 26:1288-1299 (2016)
-  //  const double rec_rate = 5.8e-7;   // 5.8e-5 cM/bp, or 17kb/cM
+    /* User-settable parameters */
+    double eps         = Rcpp::as<double>(param_list["eps"]);         // error rate in genotype calls
+    int min_inform     = Rcpp::as<int>(param_list["min_inform"]);     // minimum number of informative sites in a pairwise
+    //  comparison (those w/ minor allele)
+    double min_discord = Rcpp::as<double>(param_list["min_discord"]); // minimum discordance in comparison; set > 0 to skip identical pairs
+    double max_discord = Rcpp::as<double>(param_list["max_discord"]); // set < 1 to skip unrelated pairs
+    int nchrom         = Rcpp::as<int>(param_list["nchrom"]);         // 14 for falciparum
+    int min_snp_sep    = Rcpp::as<int>(param_list["min_snp_sep"]);    // skip next snp(s) if too close to last one; in bp
+    double rec_rate    = Rcpp::as<double>(param_list["rec_rate"]);    // 7.4e-5 cM/bp or 13.5 kb/cM Miles et al, Genome Res 26:1288-1299 (2016)
+    //  const double rec_rate = 5.8e-7;   // 5.8e-5 cM/bp, or 17kb/cM
 
-  /* end user-settable parameters */
-  const double fit_thresh_dpi   = .001;
-  const double fit_thresh_dk    = .01;
-  const double fit_thresh_drelk = .001;
+    /* end user-settable parameters */
+    const double fit_thresh_dpi   = .001;
+    const double fit_thresh_dk    = .01;
+    const double fit_thresh_drelk = .001;
 
-  double k_rec_init = 1.0;          // starting value for N generation parameter
-  double k_rec, k_rec_max = 0.;  // working and max value for same
-  const int max_all = 8;
-  int niter = 5;    // maximum number of iterations of fit; can be overriden by -m
-  int max_snp = 30000;
-  char* erp;
-  int linesize = 4000;
-  char *newLine2, *running;
-  std::vector<std::string> sample1;
-  std::vector<std::string> sample2;
-  std::vector<std::string> bad_samp;
-  std::vector<std::pair<std::string, std::string>> good_pairs;
-  int nsample1=0, nsample2=0, chr, sum, iall, all, js, snp_ind;
-  int **geno1, **geno2, chr2, pos2, majall, npair_report;
-  double **discord, pright, seq_ibd_fb=0, seq_dbd_fb=0, p_ibd, fmean, fmeani, fmeanj;
-  double **freq1=nullptr, **freq2=nullptr, *ffreq1=nullptr, *ffreq2=nullptr, xisum, xi[2][2], trans_pred, trans_obs;
-  double *phi[2], pinit[2], pi[2], *b[2], a[2][2], ptrans, *alpha[2], *beta[2], *scale;
-  double maxval, max_phi=0, max_phiL, seq_ibd, seq_dbd, count_ibd_fb, count_dbd_fb;
-  double gamma[2], last_pi=0, last_prob=0, last_krec=0, delpi, delprob, delk, maxfreq;
-  FILE *inf2=nullptr, *outf=nullptr, *pf=nullptr, *ff1=nullptr, *ff2=nullptr;
-  int *diff=nullptr, *same_min=nullptr, *allcount1, *allcount2;
-  std::vector<bool> use_sample1;
-  std::vector<bool> use_sample2;
-  int *traj, add_seq, nsample_use2;
-  int nsample_use1, nsnp, npair, isnp, chrlen, *pos, *psi[2], max;
-  int *nmiss_bypair=nullptr, totall1, totall2, is, maxlen;
-  std::vector<int> start_chr;
-  std::vector<int> end_chr;
-  bool **use_pair = nullptr;
-  int *nall=nullptr, nuse_pair=0, gi, gj, delpos;
-  bool killit;
-  int ntri=0, start_snp, ex_all=0, last_snp;
-  int fpos=0, fchr=0, iter, ntrans;
-  bool finish_fit;
-  int prev_chrom, ngood, nskipped=0, nsite;
-  int count_ibd_vit, count_dbd_vit;
+    double k_rec_init = 1.0;          // starting value for N generation parameter
+    double k_rec, k_rec_max = 0;  // working and max value for same
+    const int max_all = 8;
+    int niter = 5;    // maximum number of iterations of fit; can be overriden by -m
+    int max_snp = 30000;
+    std::vector<std::string> sample1;
+    std::vector<std::string> sample2;
+    std::vector<std::string> bad_samp;
+    std::vector<std::pair<std::string, std::string>> good_pairs;
+    int nsample1=0, nsample2=0, chr, sum, all, js, snp_ind;
+    int **geno1, **geno2, chr2, pos2, majall, npair_report;
+    double **discord, pright, seq_ibd_fb=0, seq_dbd_fb=0, p_ibd, fmean, fmeani, fmeanj;
+    double **freq1=nullptr, **freq2=nullptr, *ffreq1=nullptr, *ffreq2=nullptr, xisum, xi[2][2], trans_pred, trans_obs;
+    double *phi[2], pinit[2], pi[2], *b[2], a[2][2], ptrans, *alpha[2], *beta[2], *scale;
+    double maxval, max_phi=0, max_phiL, seq_ibd, seq_dbd, count_ibd_fb, count_dbd_fb;
+    double gamma[2], last_pi=0, last_prob=0, last_krec=0, delpi, delprob, delk, maxfreq;
+    FILE *outf=nullptr, *pf=nullptr;
+    int *diff=nullptr, *same_min=nullptr, *allcount1, *allcount2;
+    std::vector<bool> use_sample1;
+    std::vector<bool> use_sample2;
+    int *traj, add_seq, nsample_use2;
+    int nsample_use1, nsnp, npair, isnp, chrlen, *pos, *psi[2], max;
+    int *nmiss_bypair=nullptr, totall1, totall2, is, maxlen;
+    std::vector<int> start_chr;
+    std::vector<int> end_chr;
+    bool **use_pair = nullptr;
+    int *nall=nullptr, nuse_pair=0, gi, gj, delpos;
+    bool killit;
+    int ntri=0, start_snp, ex_all=0, last_snp;
+    int fpos=0, fchr=0, iter, ntrans;
+    bool finish_fit;
+    int prev_chrom, nskipped=0, nsite;
+    int count_ibd_vit, count_dbd_vit;
 
-  std::string freq_file1;
-  std::string freq_file2;
-  std::string bad_file;
-  std::string good_file;
-  std::string data_file1;
-  std::string data_file2;
-  std::string out_filebase;
-  std::string file;
+    std::string freq_file1;
+    std::string freq_file2;
+    std::string bad_file;
+    std::string good_file;
+    std::string data_file1;
+    std::string data_file2;
+    std::string out_filebase;
+    std::string file;
 
-  bool freq_flag1 = false;
-  bool freq_flag2 = false;
-  bool bflag      = false;
-  bool gflag      = false;
-  bool mflag      = false;
-  bool nflag      = false;
-  bool iflag1     = false;
-  bool iflag2     = false;
-  bool oflag      = false;
+    bool freq_flag1 = false;
+    bool freq_flag2 = false;
+    bool bflag      = false;
+    bool gflag      = false;
+    bool mflag      = false;
+    bool nflag      = false;
+    bool iflag1     = false;
+    bool iflag2     = false;
+    bool oflag      = false;
 
-  pinit[0] = 0.5;  // flat prior
-  pinit[1] = 0.5;
+    pinit[0] = 0.5;  // flat prior
+    pinit[1] = 0.5;
 
-  char usage_string[512];
-  strcpy(usage_string, "Usage: hmm -i <input file, pop1> -o <output filename> [-I <input file, pop2>] \n");
-  strcat(usage_string, "[-m <max fit iter>] [-f <allele freq file, pop1>] [-F <allele freq file, pop2>]\n");
-  strcat(usage_string,  "[-b <file with samples to skip>] [-n <max N generation>]");
-  strcat(usage_string, "  [-g <file with sample pairs to use>]\n");
+    char usage_string[512];
+    strcpy(usage_string, "Usage: hmm -i <input file, pop1> -o <output filename> [-I <input file, pop2>] \n");
+    strcat(usage_string, "[-m <max fit iter>] [-f <allele freq file, pop1>] [-F <allele freq file, pop2>]\n");
+    strcat(usage_string,  "[-b <file with samples to skip>] [-n <max N generation>]");
+    strcat(usage_string, "  [-g <file with sample pairs to use>]\n");
 
-  opterr = 0;
+    opterr = 0;
 
-  parse_parameters(
-    param_list,
-    freq_flag1, freq_file1,
-    freq_flag2, freq_file2,
-    bflag, bad_file,
-    gflag, good_file,
-    mflag, niter,
-    nflag, k_rec_max,
-    iflag1, data_file1,
-    iflag2, data_file2,
-    oflag, out_filebase);
+    parse_parameters(
+        param_list,
+        freq_flag1, freq_file1,
+        freq_flag2, freq_file2,
+        bflag, bad_file,
+        gflag, good_file,
+        mflag, niter,
+        nflag, k_rec_max,
+        iflag1, data_file1,
+        iflag2, data_file2,
+        oflag, out_filebase);
 
-  if (freq_flag2 && !iflag2) {
-    REprintf("Inconsistent options: frequency file for 2nd population specified");
-    REprintf(" with no data file for that population\n");
-    Rcpp::stop("");
-  }
-
-  allcount1 = new int[max_all + 1];
-
-  ff1 = open_frequency_file(freq_flag1, freq_file1);
-  ff2 = open_frequency_file(freq_flag2, freq_file2);
-
-  nall = new int[max_snp];
-  freq1 = new double*[max_snp];
-  pos = new int[max_snp];
-
-  start_chr.resize(nchrom+1, 10000000);
-  start_chr[0] = 0;
-  end_chr.resize(nchrom+1, -1);
-  end_chr[0] = 0;
-
-  for (isnp = 0; isnp < max_snp; ++isnp) {
-    freq1[isnp] = new double[max_all+1];
-  }
-  ffreq1 = new double[max_all+1];
-  if (iflag2) {
-    allcount2 = new int[max_all+1];
-    freq2 = new double*[max_snp];
-    for (isnp = 0; isnp < max_snp; ++isnp) {
-      freq2[isnp] = new double[max_all+1];
+    if (freq_flag2 && !iflag2) {
+        REprintf("Inconsistent options: frequency file for 2nd population specified");
+        REprintf(" with no data file for that population\n");
+        Rcpp::stop("");
     }
-    ffreq2 = new double[max_all+1];
-  }
-  else {
-    allcount2 = allcount1;
-    freq2 = freq1;
-    ffreq2 = nullptr;
-  }
 
-  ngood = 0;
-  if (bflag) bflag = load_bad_samples(bad_file, bad_samp);
-  if (gflag) gflag = load_good_samples(good_file, good_pairs);
+    allcount1 = new int[max_all + 1];
 
-  inf2 = open_input_file(iflag2, data_file2);
+    nall = new int[max_snp];
+    freq1 = new double*[max_snp];
+    pos = new int[max_snp];
 
-  outf = open_output_file(out_filebase + ".hmm.txt");
-  fprintf(outf, "sample1\tsample2\tchr\tstart\tend\tdifferent\tNsnp\n");
+    start_chr.resize(nchrom+1, 10000000);
+    start_chr[0] = 0;
+    end_chr.resize(nchrom+1, -1);
+    end_chr[0] = 0;
 
-  pf = open_output_file(out_filebase + ".hmm_fract.txt");
-  fprintf(pf, "sample1\tsample2\tN_informative_sites\tdiscordance\tlog_p\tN_fit_iteration\tN_generation");
-  fprintf(pf, "\tN_state_transition\tseq_shared_best_traj\tfract_sites_IBD\tfract_vit_sites_IBD\n");
+    for (isnp = 0; isnp < max_snp; ++isnp) {
+        freq1[isnp] = new double[max_all+1];
+    }
+    ffreq1 = new double[max_all+1];
+    if (iflag2) {
+        allcount2 = new int[max_all+1];
+        freq2 = new double*[max_snp];
+        for (isnp = 0; isnp < max_snp; ++isnp) {
+            freq2[isnp] = new double[max_all+1];
+        }
+        ffreq2 = new double[max_all+1];
+    }
+    else {
+        allcount2 = allcount1;
+        freq2 = freq1;
+        ffreq2 = nullptr;
+    }
 
-  std::vector<std::string> file1_data;
-  read_text_file(data_file1, file1_data);
+    // clorton - input files, frequency files, good samples, bad samples, output files
 
-  // Ignore first two columns, 'chrom' and 'pos'
-  const auto& header1 = file1_data[0];
-  nsample1 = split(header1, '\t').size() - 2;
+    std::vector<std::string> file1_data;
+    std::vector<std::string> file2_data;
+    read_text_file(data_file1, file1_data);
+    if ( iflag2 ) read_text_file(data_file2, file2_data);
 
-  geno1 = new int*[nsample1];
-  use_sample1.resize(nsample1, true);
-  discord = new double*[nsample1];
-  use_pair = new bool*[nsample1];  // nsamp1 x nsamp2
-  for (int isamp = 0; isamp < nsample1; ++isamp) {
-    geno1[isamp] = new int[max_snp];
-  }
-  prev_chrom = -1;
+    std::vector<std::string> freq1_data;
+    std::vector<std::string> freq2_data;
+    if ( freq_flag1 ) read_text_file(freq_file1, freq1_data);
+    if ( freq_flag2 ) read_text_file(freq_file2, freq2_data);
+
+    if (gflag) gflag = load_good_samples(good_file, good_pairs);
+    if (bflag) bflag = load_bad_samples(bad_file, bad_samp);
+
+    outf = open_output_file(out_filebase + ".hmm.txt");
+    fprintf(outf, "sample1\tsample2\tchr\tstart\tend\tdifferent\tNsnp\n");
+
+    pf = open_output_file(out_filebase + ".hmm_fract.txt");
+    fprintf(pf, "sample1\tsample2\tN_informative_sites\tdiscordance\tlog_p\tN_fit_iteration\tN_generation");
+    fprintf(pf, "\tN_state_transition\tseq_shared_best_traj\tfract_sites_IBD\tfract_vit_sites_IBD\n");
+
+    const auto& header1 = file1_data[0];
+    nsample1 = split(header1, '\t').size() - 2; // Ignore first two columns, 'chrom' and 'pos'
+
+    geno1 = new int*[nsample1];
+    use_sample1.resize(nsample1, true);
+    discord = new double*[nsample1];
+    use_pair = new bool*[nsample1];  // nsamp1 x nsamp2
+    for (int isamp = 0; isamp < nsample1; ++isamp) {
+        geno1[isamp] = new int[max_snp];
+    }
+    prev_chrom = -1;
 
     nsample_use1 = store_sample_names(header1, sample1, bad_samp, use_sample1);
 
-    std::vector<std::string> file2_data;
     if ( iflag2 ) {
-        read_text_file(data_file2, file2_data);
+
         const auto& header2 = file2_data[0];
-        nsample2 = split(header2, '\t').size() - 2;
+        nsample2 = split(header2, '\t').size() - 2; // Ignore first two columns, 'chrom' and 'pos'
 
         geno2 = new int*[nsample2];
         use_sample2.resize(nsample2, true);
@@ -208,10 +206,7 @@ int hmmibd_c(Rcpp::List param_list) {
             geno2[isamp] = new int[max_snp];
         }
 
-        nsample_use2 = 0;
-        if (iflag2) {
-            nsample_use2 = store_sample_names(header2, sample2, bad_samp, use_sample2);
-        }
+        nsample_use2 = store_sample_names(header2, sample2, bad_samp, use_sample2);
     }
     else {
         sample2 = sample1;
@@ -256,126 +251,24 @@ int hmmibd_c(Rcpp::List param_list) {
                                good_pairs, sample1, sample2);
 
     nsnp = 0;
-    // clorton
-    newLine2 = new char[linesize+1];
-    // clorton
 
     for ( int iline = 1; iline < file1_data.size(); ++iline ) {
 
-        const std::string& newLine1 = file1_data[iline];
-
+        // See if we need more space...
         if (nsnp == max_snp) {
-
-            nall = (int *)realloc(nall, 2*max_snp*sizeof(int));
-            pos = (int *)realloc(pos, 2*max_snp*sizeof(int));
-
-            for (int isamp = 0; isamp < nsample1; ++isamp) {
-                geno1[isamp] = (int *)realloc(geno1[isamp], 2*max_snp*sizeof(int));
-            }
-
-            freq1 = (double **)realloc(freq1, 2*max_snp*sizeof(double*));
-
-            for (isnp = max_snp; isnp < 2*max_snp; ++isnp) {
-                freq1[isnp] = new double[max_all+1];
-            }
-
-            if (iflag2) {
-
-                for (int isamp = 0; isamp < nsample2; ++isamp) {
-                    geno2[isamp] = (int *)realloc(geno2[isamp], 2*max_snp*sizeof(int));
-                }
-
-                freq2 = (double **)realloc(freq2, 2*max_snp*sizeof(double*));
-
-                for (isnp = max_snp; isnp < 2*max_snp; ++isnp) {
-                    freq2[isnp] = new double[max_all+1];
-                }
-            }   // end if iflag2
-            else {
-                geno2 = geno1;
-                freq2 = freq1;
-            }
-
-            max_snp *= 2;
-        }  // end reallocating space
+            increase_storage(nall, max_snp, pos, nsample1, geno1, freq1, max_all, iflag2, nsample2, geno2, freq2);
+        }
 
         totall1 = totall2 = 0;
         killit = false;
 
-        for (iall = 0; iall <= max_all; ++iall) {
-            allcount1[iall] = allcount2[iall] = 0;
-        }
+        memset(allcount1, 0, (max_all+1)*sizeof(int));
+        memset(allcount2, 0, (max_all+1)*sizeof(int));
 
         // Parse line, pop1
-        std::vector<std::string> tokens = split(newLine1, '\t');
-        for ( int itoken = 0; itoken < tokens.size(); ++itoken ) {
-
-            const std::string& token = tokens[itoken];
-
-            switch (itoken) {
-                case 0:
-                    {
-                        try {
-                            chr = std::stol(token);
-                        } catch (...) {
-                            REprintf("Invalid chromosome '%s' (must be integer)\n", token.c_str());
-                            Rcpp::stop("");
-                        }
-                    }
-                    break;
-
-                case 1:
-                    {
-                        try {
-                            pos[nsnp] = std::stol(token);
-                        } catch (...) {
-                            REprintf("Invalid position '%s' (must be integer)\n", token.c_str());
-                            Rcpp::stop("");
-                        }
-
-                        if ( (chr == prev_chrom && pos[nsnp] < pos[nsnp-1]) || chr < prev_chrom) {
-                            REprintf("Variants are out of order\n");
-                            Rcpp::stop("");
-                        }
-
-                        if (nsnp > 0 && chr == prev_chrom && pos[nsnp] - pos[nsnp-1] < min_snp_sep) {
-                            ++nskipped;
-                            killit = true;
-                            break;
-                        }
-                    }
-                    break;
-
-                default:
-                    {
-                        try {
-                            all = std::stol(token);
-                        } catch (...) {
-                            REprintf("Invalid allele '%s' (must be integer)\n", token.c_str());
-                            Rcpp::stop("");
-                        }
-
-                        if (all > max_all) {
-                            killit = true;
-                            ++ex_all;
-                            break;
-                        }
-
-                        geno1[itoken-2][nsnp] = all;
-
-                        if (use_sample1[itoken-2]) {
-                            if (all >= 0) {
-                                allcount1[all]++;
-                                ++totall1;
-                            }
-                        }
-                    }
-                    break;
-            }
-
-            if (killit) break;
-
-        } // end parsing input line
+        const std::string& input_line = file1_data[iline];
+        parse_input1_line(input_line, chr, pos, nsnp, prev_chrom, min_snp_sep, nskipped, killit,
+                         all, max_all, ex_all, geno1, use_sample1, allcount1, totall1);
 
         if (!freq_flag1 && totall1 == 0) {
             killit = true; // no valid calls to calculate frequency
@@ -384,64 +277,8 @@ int hmmibd_c(Rcpp::List param_list) {
         // Parse line, pop2
         if (iflag2) {
 
-            const std::string& newLine2 = file2_data[iline];
-
-            std::vector<std::string> tokens = split(newLine2, '\t');
-            for ( int itoken = 0; itoken < tokens.size(); ++itoken ) {
-
-                const std::string& token = tokens[itoken];
-
-                switch (itoken) {
-                    case 0:
-                        try {
-                            chr2 = std::stol(token);
-                        } catch (...) {
-                            REprintf("Invalid chromosome '%s' (must be integer)\n", token.c_str());
-                            Rcpp::stop("");
-                        }
-                        break;
-
-                    case 1:
-                        try {
-                            pos2 = std::stol(token);
-                        } catch (...) {
-                            REprintf("Invalid position '%s' (must be integer)\n", token.c_str());
-                            Rcpp::stop("");
-                        }
-
-                        if (pos2 != pos[nsnp] || chr2 != chr) {
-                            REprintf("Data files do not agree on SNPs\n");
-                            Rcpp::stop("");
-                        }
-                        break;
-
-                    default:
-                        try {
-                            all = std::stol(token);
-                        } catch (...) {
-                            REprintf("Invalid allele '%s' (must be integer)\n", token.c_str());
-                            Rcpp::stop("");
-                        }
-
-                        if (all > max_all) {
-                            killit = true;
-                            ++ex_all;
-                            break;
-                        }
-
-                        geno2[itoken-2][nsnp] = all;
-
-                        if (use_sample2[itoken-2]) {
-                            if (all >= 0) {
-                              allcount2[all]++;
-                              ++totall2;
-                            }
-                        }
-                        break;
-                }
-
-                if (killit) break;
-            } // end parsing 2nd input line
+            const std::string& input_line = file2_data[iline];
+            parse_input2_line(input_line, chr2, pos2, pos, nsnp, chr, all, max_all, killit, ex_all, geno2, use_sample2, allcount2, totall2);
 
             if (!freq_flag2 && totall2 == 0) {
                 killit = true; // no valid calls to calculate frequency
@@ -454,97 +291,14 @@ int hmmibd_c(Rcpp::List param_list) {
 
         // if reading freqs from file, read one (pop1)
         if (freq_flag1) {
-
-            // Clear previous frequencies (since might have skipped previous snp via 'continue')
-            for (iall = 0; iall <= max_all; ++iall) {
-                ffreq1[iall] = 0;
-            }
-
-            char newLine1[4096];    // clorton
-            if (!fgets(newLine1, linesize, ff1)) {
-                REprintf("Could not read string from stream %s\n", ff1);
-                Rcpp::stop("");
-            }
-
-            fpos = fchr = 0;
-
-            int itoken;
-            char *token;
-            for (running = newLine1, itoken = 0; (token = strsep(&running, "\t")); ++itoken) {
-
-                if (itoken == 0) {
-
-                    fchr = strtol(token, &erp, 10);
-
-                    if (token == erp) {
-                        REprintf("Invalid chromosome %s (must be integer)\n", token);
-                        Rcpp::stop("");
-                    }
-                }
-                else if (itoken == 1) {
-
-                  fpos = strtol(token, &erp, 10);
-
-                  if (token == erp) {
-                      REprintf("Invalid position %s (must be integer)\n", token);
-                      Rcpp::stop("");
-                  }
-                }
-                else if (itoken > 1) {ffreq1[itoken-2] = strtod(token, nullptr);}
-            }
-
-            if (fchr != chr || fpos != pos[nsnp]) {
-                REprintf("Mismatch between data file and frequency file. Data file (chr/pos): %d/%d vs freq file: %d/%d\n",
-                          chr, pos[nsnp], fchr, fpos);
-                Rcpp::stop("");
-            }
+            const std::string& input_line = freq1_data[iline-1];  // frequency file does not have a header
+            parse_frequency_line(input_line, ffreq1, max_all, fpos, fchr, chr, pos, nsnp);
         }
 
         // if reading freqs from file, read one (pop2)
         if (freq_flag2) {
-
-            // Clear previous frequencies (since might have skipped previous snp via 'continue')
-            for (iall = 0; iall <= max_all; ++iall) {
-                ffreq2[iall] = 0;
-            }
-
-            if (!fgets(newLine2, linesize, ff2)) {
-                REprintf("Could not read string from stream %s\n", ff2);
-                Rcpp::stop("");
-            }
-
-            fpos = fchr = 0;
-
-            int itoken;
-            char *token;
-            for (running = newLine2, itoken = 0; (token = strsep(&running, "\t")); ++itoken) {
-
-                if (itoken == 0) {
-
-                    fchr = strtol(token, &erp, 10);
-
-                    if (token == erp) {
-                        REprintf("Invalid chromosome %s (must be integer)\n", token);
-                        Rcpp::stop("");
-                    }
-                }
-                else if (itoken == 1) {
-
-                    fpos = strtol(token, &erp, 10);
-
-                    if (token == erp) {
-                        REprintf("Invalid position %s (must be integer)\n", token);
-                        Rcpp::stop("");
-                    }
-                }
-                else if (itoken > 1) {ffreq2[itoken-2] = strtod(token, nullptr);}
-            }
-
-            if (fchr != chr || fpos != pos[nsnp]) {
-                REprintf("Mismatch between data file and frequency file. Data file (chr/pos): %d/%d vs freq file: %d/%d\n",
-                          chr, pos[nsnp], fchr, fpos);
-                Rcpp::stop("");
-            }
+            const std::string& input_line = freq2_data[iline-1];  // frequency file does not have a header
+            parse_frequency_line(input_line, ffreq2, max_all, fpos, fchr, chr, pos, nsnp);
         }
 
         nall[nsnp] = 0;
@@ -552,35 +306,9 @@ int hmmibd_c(Rcpp::List param_list) {
         maxfreq = 0;
 
         // process this variant -- calculate allele frequencies for each pop
-        for (iall = 0; iall <= max_all; ++iall) {
-
-            if (freq_flag1) {
-                freq1[nsnp][iall] = ffreq1[iall];
-            }
-            else {
-                freq1[nsnp][iall] = (double) allcount1[iall] / totall1;
-            }
-
-            if (iflag2) {
-                if (freq_flag2) {
-                    freq2[nsnp][iall] = ffreq2[iall];
-                }
-                else {
-                    freq2[nsnp][iall] = (double) allcount2[iall] / totall2;
-                }
-            }
-
-            fmean = (freq1[nsnp][iall] + freq2[nsnp][iall]) / 2;
-
-            if (fmean > maxfreq) {
-                maxfreq = fmean;
-                majall = iall;
-            }
-
-            if (fmean > 0) {
-                nall[nsnp]++;
-            }
-        }
+        calculate_allele_frequencies(max_all, freq_flag1, freq1, nsnp, ffreq1, allcount1, totall1,
+                                    iflag2, freq_flag2, freq2, ffreq2, allcount2, totall2,
+                                    fmean, maxfreq, majall, nall);
 
         if (killit) {continue;}
 
@@ -591,44 +319,10 @@ int hmmibd_c(Rcpp::List param_list) {
         }
 
         // Tabulate differences by pair for calculating discordance
-        {
-            int ipair = 0;
-            for (int isamp = 0; isamp < nsample1; ++isamp) {
+        tabulate_differences_by_pair_for_discordance(nsample1, use_sample1, iflag2, nsample2, use_sample2,
+                                                    geno1, geno2, majall, same_min, diff, nmiss_bypair, nsnp, chr, start_chr, end_chr);
 
-                if (!use_sample1[isamp]) {continue;}
-
-                // If 2 pops, need to loop over all combinations, but not if one pop
-                int jstart = (iflag2 ? 0 : isamp+1);
-                for (int jsamp = jstart; jsamp < nsample2; ++jsamp) {
-
-                    if (!use_sample2[jsamp]) {continue;}
-
-                    if (geno1[isamp][nsnp] != -1 && geno2[jsamp][nsnp] != -1) {
-                        if (geno1[isamp][nsnp] == geno2[jsamp][nsnp]) {
-                            if (geno1[isamp][nsnp] != majall) {
-                                same_min[ipair]++;
-                            }
-                        }
-                        else {diff[ipair]++;}
-                    }
-                    else {
-                        nmiss_bypair[ipair]++;
-                    }
-
-                    ++ipair;
-                }
-            }
-
-            if (nsnp < start_chr[chr]) {
-                start_chr[chr] = nsnp;
-            }
-
-            if (nsnp > end_chr[chr]) {
-                end_chr[chr] = nsnp;
-            }
-
-            ++nsnp;
-        }
+        ++nsnp;
     }
 
     Rprintf("Variants skipped for spacing: %d\n", nskipped);
@@ -637,44 +331,9 @@ int hmmibd_c(Rcpp::List param_list) {
     }
     Rprintf("%d variants used,\t%d with >2 alleles\n", nsnp, ntri);
 
-    {
-        int ipair = 0;
-        for (int isamp = 0; isamp < nsample1; ++isamp) {
-
-            if (!use_sample1[isamp]) {continue;}
-
-            int jstart = (iflag2 ? 0 : isamp+1);
-            for (int jsamp = jstart; jsamp < nsample2; ++jsamp) {
-
-                if (!use_sample2[jsamp]) {continue;}
-
-                sum = diff[ipair] + same_min[ipair];
-
-                if (sum == 0) {
-                    discord[isamp][jsamp]  = 0;
-                }
-                else {
-                    discord[isamp][jsamp] = (double) diff[ipair] / sum;
-                }
-
-                if (use_pair[isamp][jsamp]) {
-                    if ( (discord[isamp][jsamp] >  max_discord) ||
-                         (sum < min_inform) ||
-                         (discord[isamp][jsamp] < min_discord) ) {
-
-                        use_pair[isamp][jsamp] = false;
-                    }
-                    else {
-                        ++nuse_pair;
-                    }
-                }
-
-                ++ipair;
-            }
-        }
-
-        Rprintf("sample pairs analyzed (filtered for discordance and informative markers): %d\n", nuse_pair);
-    }
+    filter_pairs_by_discordance_and_markers(
+        nsample1, use_sample1, iflag2, nsample2, use_sample2, sum, diff, same_min, discord, use_pair, max_discord, min_inform, min_discord, nuse_pair
+    );
 
     maxlen = 0;
     for (chr = 1; chr <= nchrom; ++chr) {
