@@ -49,7 +49,7 @@ int hmmibd_c(Rcpp::List param_list) {
     const double fit_thresh_drelk = .001;
 
     double k_rec_init = 1.0;          // starting value for N generation parameter
-    double k_rec, k_rec_max = 0;  // working and max value for same
+    double k_rec_max = 0;  // working and max value for same
     const int max_all = 8;
     int niter = 5;    // maximum number of iterations of fit; can be overriden by -m
     int max_snp = 30000;
@@ -57,30 +57,28 @@ int hmmibd_c(Rcpp::List param_list) {
     std::vector<std::string> sample2;
     std::vector<std::string> bad_samp;
     std::vector<std::pair<std::string, std::string>> good_pairs;
-    int nsample1=0, nsample2=0, chr, sum, all, js, snp_ind;
+    int nsample1=0, nsample2=0, chr, sum, all;
     int **geno1, **geno2, chr2, pos2, majall, npair_report;
-    double **discord, pright, seq_ibd_fb=0, seq_dbd_fb=0, p_ibd, fmean, fmeani, fmeanj;
-    double **freq1=nullptr, **freq2=nullptr, *ffreq1=nullptr, *ffreq2=nullptr, xisum, xi[2][2], trans_pred, trans_obs;
-    double *phi[2], pinit[2], pi[2], *b[2], a[2][2], ptrans, *alpha[2], *beta[2], *scale;
-    double maxval, max_phi=0, max_phiL, seq_ibd, seq_dbd, count_ibd_fb, count_dbd_fb;
-    double gamma[2], last_pi=0, last_prob=0, last_krec=0, delpi, delprob, delk, maxfreq;
+    double **discord, fmean;
+    double **freq1=nullptr, **freq2=nullptr, *ffreq1=nullptr, *ffreq2=nullptr;
+    double pinit[2], pi[2];
+
+    double maxfreq;
     FILE *outf=nullptr, *pf=nullptr;
     int *diff=nullptr, *same_min=nullptr, *allcount1, *allcount2;
     std::vector<bool> use_sample1;
     std::vector<bool> use_sample2;
-    int *traj, add_seq, nsample_use2;
-    int nsample_use1, nsnp, npair, isnp, chrlen, *pos, *psi[2], max;
-    int *nmiss_bypair=nullptr, totall1, totall2, is, maxlen;
+    int nsample_use2;
+    int nsample_use1, nsnp, npair, isnp, *pos;
+    int *nmiss_bypair=nullptr, totall1, totall2, maxlen;
     std::vector<int> start_chr;
     std::vector<int> end_chr;
     bool **use_pair = nullptr;
-    int *nall=nullptr, nuse_pair=0, gi, gj, delpos;
+    int *nall=nullptr, nuse_pair=0;
     bool killit;
-    int ntri=0, start_snp, ex_all=0, last_snp;
-    int fpos=0, fchr=0, iter, ntrans;
-    bool finish_fit;
-    int prev_chrom, nskipped=0, nsite;
-    int count_ibd_vit, count_dbd_vit;
+    int ntri=0, ex_all=0;
+    int fpos=0, fchr=0;
+    int prev_chrom, nskipped=0;
 
     std::string freq_file1;
     std::string freq_file2;
@@ -175,11 +173,7 @@ int hmmibd_c(Rcpp::List param_list) {
     if (bflag) bflag = load_bad_samples(bad_file, bad_samp);
 
     outf = open_output_file(out_filebase + ".hmm.txt");
-    fprintf(outf, "sample1\tsample2\tchr\tstart\tend\tdifferent\tNsnp\n");
-
     pf = open_output_file(out_filebase + ".hmm_fract.txt");
-    fprintf(pf, "sample1\tsample2\tN_informative_sites\tdiscordance\tlog_p\tN_fit_iteration\tN_generation");
-    fprintf(pf, "\tN_state_transition\tseq_shared_best_traj\tfract_sites_IBD\tfract_vit_sites_IBD\n");
 
     const auto& header1 = file1_data[0];
     nsample1 = split(header1, '\t').size() - 2; // Ignore first two columns, 'chrom' and 'pos'
@@ -343,325 +337,71 @@ int hmmibd_c(Rcpp::List param_list) {
         }
     }
 
-    for (is = 0; is < 2; ++is) {
-        psi[is] = new int[maxlen];
-        phi[is] = new double[maxlen];
-        b[is] = new double[maxlen];
-        alpha[is] = new double[maxlen];
-        beta[is] = new double[maxlen];
-    }
-
-    scale = new double[maxlen];
-    traj = new int[maxlen];
-
-    {
-        int ipair = 0;
-        for (int isamp = 0; isamp < nsample1; ++isamp) {
-
-            if (!use_sample1[isamp]) {continue;}
-
-            int jstart = (iflag2 ? 0 : isamp+1);
-            for (int jsamp = jstart; jsamp < nsample2; ++jsamp) {
-
-                if (!use_sample2[jsamp]) {continue;}
-
-                sum = diff[ipair] + same_min[ipair];
-
-                if (use_pair[isamp][jsamp]) {
-
-                    last_prob = 0;
-                    last_pi = pi[0] = pinit[0];  // initialize with prior
-                    pi[1] = pinit[1];
-                    last_krec = k_rec = k_rec_init;
-                    finish_fit = false;
-
-                    for (iter = 0; iter < niter; ++iter) {
-
-                        trans_obs = trans_pred = ntrans = 0;
-                        seq_ibd = seq_dbd = count_ibd_fb = count_dbd_fb = seq_ibd_fb = seq_dbd_fb = 0;
-                        count_ibd_vit = count_dbd_vit = 0;
-                        max_phi = 0;
-
-                        for (chr = 1; chr <= nchrom; ++chr) {
-
-                            nsite = 0;
-
-                            if (end_chr[chr] < 0) {continue;}
-
-                            chrlen = pos[end_chr[chr]] - pos[start_chr[chr]];
-
-                            for (isnp = start_chr[chr]; isnp <= end_chr[chr]; ++isnp) {
-
-                                snp_ind = isnp - start_chr[chr];
-                                gi = geno1[isamp][isnp];
-                                gj = geno2[jsamp][isnp];
-                                pright = 1 - eps * (nall[isnp] - 1);
-
-                                if (gi == -1 || gj == -1) {
-                                    // O = n (missing data)
-                                    b[0][snp_ind] = b[1][snp_ind] = 1.0;
-                                }
-                                else if (gi == gj) {
-                                    // homozygote
-                                    ++nsite;
-                                    fmean = (freq1[isnp][gi] + freq2[isnp][gi]) / 2;
-                                    b[0][snp_ind] = pright * pright * fmean + eps * eps * (1 - fmean); //IBD
-                                    b[1][snp_ind] = pright * pright * freq1[isnp][gi]*freq2[isnp][gj] +
-                                                    pright * eps * freq1[isnp][gi] * (1-freq2[isnp][gj]) +
-                                                    pright * eps * (1 - freq1[isnp][gi]) * freq2[isnp][gj] +
-                                                    eps * eps * (1-freq1[isnp][gi]) * (1-freq2[isnp][gj]);
-                                }
-                                else {
-                                    // O = aA
-                                    ++nsite;
-                                    fmeani = (freq1[isnp][gi] + freq2[isnp][gi]) / 2;
-                                    fmeanj = (freq1[isnp][gj] + freq2[isnp][gj]) / 2;
-                                    b[0][snp_ind] = pright*eps*(fmeani+fmeanj) +
-                                                    eps * eps * (1 - fmeani - fmeanj);
-                                    b[1][snp_ind] = pright * pright * freq1[isnp][gi] * freq2[isnp][gj] +
-                                                    pright*eps*( freq1[isnp][gi]*(1-freq2[isnp][gj]) + freq2[isnp][gj]*(1-freq1[isnp][gi]) ) +
-                                                    eps * eps * (1 - freq1[isnp][gi]) * (1 - freq2[isnp][gj]);
-                                }
-
-                                if (isnp == start_chr[chr]) {
-
-                                    psi[0][snp_ind] = psi[1][snp_ind] = 0;
-
-                                    for (is = 0; is < 2; ++is) {
-                                        phi[is][snp_ind] = log(pi[is]) + log(b[is][snp_ind]);
-                                        alpha[is][snp_ind] = pi[is] * b[is][snp_ind];
-                                        scale[is] = 1.;
-                                    }
-                                }
-                                else {
-                                    ptrans = k_rec * rec_rate * (pos[isnp] - pos[isnp-1]);
-                                    a[0][1] = 1 - pi[0] - (1 - pi[0]) * exp(-ptrans);
-                                    a[1][0] = 1 - pi[1] - (1 - pi[1]) * exp(-ptrans);
-                                    a[0][0] = 1 - a[0][1];
-                                    a[1][1] = 1 - a[1][0];
-
-                                    for (js = 0; js < 2; ++js) {    // index over state of current snp
-
-                                        maxval = -10000000;
-                                        alpha[js][snp_ind] = scale[snp_ind] = 0;
-
-                                        for (is = 0; is < 2; ++is) {    // index over state of previous snp
-
-                                            if (phi[is][snp_ind-1] + log(a[is][js]) > maxval ) {
-                                                maxval = phi[is][snp_ind-1] + log(a[is][js]);
-                                                psi[js][snp_ind] = is;
-                                            }
-
-                                            phi[js][snp_ind] = maxval + log(b[js][snp_ind]);
-                                            alpha[js][snp_ind] += alpha[is][snp_ind-1] * a[is][js] * b[js][snp_ind];
-                                        }
-
-                                        scale[snp_ind] += alpha[js][snp_ind];
-                                    }
-
-                                    for (js = 0; js < 2; ++js) {    // scale alpha to prevent underflow (Rabiner eqns 92)
-                                        alpha[js][snp_ind] /= scale[snp_ind];
-                                    }
-                                }   // end if initializing/continuing
-                            }  // end snp loop
-
-                            last_snp = snp_ind;
-                            max_phiL = phi[1][snp_ind];
-
-                            if (phi[0][snp_ind] > phi[1][snp_ind]) {max_phiL = phi[0][snp_ind];}
-
-                            max = (phi[1][snp_ind] > phi[0][snp_ind]) ? 1 : 0;
-                            traj[snp_ind] = max;
-                            max_phi += max_phiL;
-
-                            // Loop backward to calculate betas (backward part of forward-backward)
-                            isnp = end_chr[chr];
-                            snp_ind = isnp - start_chr[chr];
-                            beta[0][snp_ind] = beta[1][snp_ind] = 1;
-
-                            for (isnp = end_chr[chr]-1; isnp >= start_chr[chr]; isnp--) {
-
-                                snp_ind = isnp - start_chr[chr];
-                                ptrans = k_rec * rec_rate * (pos[isnp+1] - pos[isnp]);
-                                a[0][1] = 1 - pi[0] - (1 - pi[0]) * exp(-ptrans);
-                                a[1][0] = 1 - pi[1] - (1 - pi[1]) * exp(-ptrans);
-                                a[0][0] = 1 - a[0][1];
-                                a[1][1] = 1 - a[1][0];
-
-                                for (is = 0; is < 2; ++is) {    // index over state of current snp
-
-                                    beta[is][snp_ind] = 0;
-
-                                    for (js = 0; js < 2; ++js) {
-                                        // index over state of previous snp (= snp+1, since looping backward)
-                                        beta[is][snp_ind] += beta[js][snp_ind+1] * a[is][js] * b[js][snp_ind+1] / scale[snp_ind];
-                                    }
-                                }
-                            }
-
-                            // inverse loop for Viterbi
-                            for (snp_ind = last_snp-1; snp_ind >= 0; snp_ind--) {
-                                traj[snp_ind] = psi[max][snp_ind+1];
-                                max = traj[snp_ind];
-                            }
-
-                            // tabulate FB results
-                            for (snp_ind = 0; snp_ind <= last_snp; ++snp_ind) {
-
-                                p_ibd = alpha[0][snp_ind] * beta[0][snp_ind] /
-                                        (alpha[0][snp_ind] * beta[0][snp_ind] + alpha[1][snp_ind] * beta[1][snp_ind]);
-
-                                count_ibd_fb += p_ibd;
-                                count_dbd_fb += (1-p_ibd);
-
-                                if (snp_ind < last_snp) {
-
-                                    isnp = snp_ind + start_chr[chr];
-                                    delpos = pos[isnp+1] - pos[isnp];
-                                    ptrans = k_rec * rec_rate * delpos;
-                                    a[0][1] = 1 - pi[0] - (1 - pi[0]) * exp(-ptrans);
-                                    a[1][0] = 1 - pi[1] - (1 - pi[1]) * exp(-ptrans);
-                                    a[0][0] = 1 - a[0][1];
-                                    a[1][1] = 1 - a[1][0];
-                                    xisum = 0;
-
-                                    for (is = 0; is < 2; ++is) {
-                                        for (js = 0; js < 2; ++js) {
-                                            xi[is][js] = alpha[is][snp_ind] * a[is][js] * b[js][snp_ind+1] * beta[js][snp_ind+1];
-                                            xisum += xi[is][js];
-                                        }
-                                    }
-
-                                    for (is = 0; is < 2; ++is) {
-
-                                        gamma[is] = 0;
-
-                                        for (js = 0; js < 2; ++js) {
-                                            xi[is][js] /= xisum;
-                                            gamma[is] += xi[is][js];
-                                        }
-                                    }
-
-                                    // xi(0,0) in Rabiner notation = prob of being in state 0 at t and 0 at t+1
-                                    seq_ibd_fb += delpos * xi[0][0];
-                                    seq_dbd_fb += delpos * xi[1][1];
-                                    trans_obs += (xi[0][1] + xi[1][0]);
-                                    trans_pred += gamma[0] * a[0][1] + gamma[1] * a[1][0];
-                                }
-                            }
-
-                            // print final Viterbi trajectory
-                            // start
-                            if (iter == niter - 1 || finish_fit) {
-                                if (nsite > 0) {
-
-                                    fprintf(outf, "%s\t%s\t%d\t%d", sample1[isamp].c_str(), sample2[jsamp].c_str(), chr, pos[0+start_chr[chr]]);
-
-                                    start_snp = 0;
-                                    for (isnp = 1; isnp < end_chr[chr] - start_chr[chr] + 1; ++isnp) {
-
-                                        if (traj[isnp] != traj[isnp-1]) {
-
-                                            ++ntrans;
-                                            add_seq = pos[isnp - 1 + start_chr[chr]] - pos[start_snp + start_chr[chr]] + 1;
-
-                                            if (traj[isnp-1] == 0) {seq_ibd += add_seq;}
-                                            else {seq_dbd += add_seq;}
-
-                                            // end one and start another
-                                            fprintf(outf, "\t%d\t%d\t%d\n",
-                                                    pos[isnp - 1 + start_chr[chr]], traj[isnp-1], isnp - start_snp);
-
-                                            fprintf(outf, "%s\t%s\t%d\t%d", sample1[isamp].c_str(),
-                                                    sample2[jsamp].c_str(), chr, pos[isnp + start_chr[chr]]);
-
-                                            start_snp = isnp;
-                                        }
-                                    }
-
-                                    isnp = end_chr[chr] - start_chr[chr];
-                                    add_seq = pos[isnp + start_chr[chr]] - pos[start_snp + start_chr[chr]] + 1;
-
-                                    if (traj[isnp] == 0) {seq_ibd += add_seq;}
-                                    else {seq_dbd += add_seq;}
-
-                                    fprintf(outf, "\t%d\t%d\t%d\n", pos[end_chr[chr]], traj[isnp], isnp - start_snp + 1);
-
-                                    // Tabulate sites by state for Viterbi trajectory
-                                    for (isnp = 0; isnp < end_chr[chr] - start_chr[chr] + 1; ++isnp) {
-                                        if (traj[isnp] == 0) {++count_ibd_vit;}
-                                        else {++count_dbd_vit;}
-                                    }
-                                }
-                            }
-                        }  // end chrom loop
-
-                        // quit if fit converged on previous iteration; otherwise, update parameters
-                        if (finish_fit) {break;}
-
-                        if ((count_ibd_fb + count_dbd_fb) == 0) {
-                            REprintf("Insufficient information to estimate parameters.\n");
-                            REprintf("Do you have only one variant per chromosome?\n");
-                            Rcpp::stop("");
-                        }
-
-                        pi[0] = count_ibd_fb / (count_ibd_fb + count_dbd_fb);
-                        k_rec *= trans_obs / trans_pred;
-
-                        if (nflag && k_rec > k_rec_max) {k_rec = k_rec_max;}
-
-                        // ad hoc attempt to avoid being trapped in extremum
-                        if (iter < niter-1 && !finish_fit) {
-
-                            if (pi[0] < 1e-5) {pi[0] = 1e-5;}
-                            else if (pi[0] > 1- 1e-5) {pi[0] = 1 - 1e-5;}
-
-                            if (k_rec < 1e-5) {k_rec = 1e-5;}
-                        }
-
-                        pi[1] = 1 - pi[0];
-                        delpi = pi[0] - last_pi;
-                        delk = k_rec - last_krec;
-
-                        if (nflag && k_rec > k_rec_max) {delk = k_rec_max - last_krec;}
-
-                        delprob = max_phi - last_prob;
-                        last_pi = pi[0];
-                        last_krec = k_rec;
-                        last_prob = max_phi;
-
-                        // Evaluate fit
-                        if ( (fabs(delpi) < fit_thresh_dpi) &&
-                            (fabs(delk) < fit_thresh_dk || fabs(delk/k_rec) < fit_thresh_drelk) ) {
-
-                            finish_fit = true;
-                        }
-                    }  // end parameter fitting loop
-
-                    fprintf(
-                        pf,
-                        "%s\t%s\t%d\t%.4f\t%.5e\t%d\t%.3f\t%d\t%.5f\t%.5f\t%.5f\n",
-                        sample1[isamp].c_str(),
-                        sample2[jsamp].c_str(),
-                        sum,
-                        (discord[isamp][jsamp]),
-                        max_phi,
-                        iter,
-                        k_rec,
-                        ntrans,
-                        seq_ibd / (seq_ibd + seq_dbd),
-                        count_ibd_fb / (count_ibd_fb + count_dbd_fb),
-                        double(count_ibd_vit) / (count_ibd_vit + count_dbd_vit)
-                        );
-
-                }   // end if use pair
-
-                ++ipair;
-
-                if ((ipair%10000) == 0) {Rprintf("Starting pair %d\n", ipair);}
-            }
-        }
-    }
+    fprintf(outf, "sample1\tsample2\tchr\tstart\tend\tdifferent\tNsnp\n");
+    fprintf(pf, "sample1\tsample2\tN_informative_sites\tdiscordance\tlog_p\tN_fit_iteration\tN_generation");
+    fprintf(pf, "\tN_state_transition\tseq_shared_best_traj\tfract_sites_IBD\tfract_vit_sites_IBD\n");
+
+    output1_t output_fn1 = [outf](const std::string& sample1, const std::string& sample2, int chromosome, int position) {
+        fprintf(outf, "%s\t%s\t%d\t%d", sample1.c_str(), sample2.c_str(), chromosome, position);
+    };
+    output2_t output_fn2 = [outf](int position, int different, int nsnp) {
+        fprintf(outf, "\t%d\t%d\t%d\n", position, different, nsnp);
+    };
+    output3_t freq_fn = [pf](const std::string& sample1, const std::string& sample2,
+                        int num_sites, double discord, double log_p, int fit_iteration,
+                        double generation, int state_transition, double seq_shared_best_traj,
+                        double fract_sites_ibd, double fract_vit_sites_ibd) {
+        fprintf(pf, "%s\t%s\t%d\t%.4f\t%.5e\t%d\t%.3f\t%d\t%.5f\t%.5f\t%.5f\n",
+                sample1.c_str(), sample2.c_str(),
+                num_sites,
+                discord,
+                log_p,
+                fit_iteration,
+                generation,
+                state_transition,
+                seq_shared_best_traj,
+                fract_sites_ibd,
+                fract_vit_sites_ibd
+        );
+    };
+
+    calculate_hmm_ibd(
+        maxlen,
+        nsample1,
+        use_sample1,
+        iflag2,
+        nsample2,
+        use_sample2,
+        diff,
+        same_min,
+        use_pair,
+        pi,
+        pinit,
+        k_rec_init,
+        niter,
+        nchrom,
+        start_chr,
+        end_chr,
+        pos,
+        geno1,
+        geno2,
+        eps,
+        nall,
+        freq1,
+        freq2,
+        rec_rate,
+        sample1,
+        sample2,
+        output_fn1,
+        output_fn2,
+        freq_fn,
+        nflag,
+        k_rec_max,
+        fit_thresh_dpi,
+        fit_thresh_dk,
+        fit_thresh_drelk,
+        discord
+    );
 
     fclose(pf);
     fclose(outf);

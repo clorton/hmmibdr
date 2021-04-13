@@ -1,4 +1,6 @@
 
+#include <functional>
+
 FILE* open_frequency_file(bool flag, const std::string& filename);
 FILE* open_input_file(bool flag, const std::string& filename);
 FILE* open_output_file(const std::string& filename);
@@ -673,4 +675,400 @@ void filter_pairs_by_discordance_and_markers(
     }
 
     Rprintf("sample pairs analyzed (filtered for discordance and informative markers): %d\n", nuse_pair);
+}
+
+typedef std::function<void(const std::string&, const std::string&, int, int)> output1_t;
+typedef std::function<void(int, int, int)> output2_t;
+typedef std::function<void(const std::string&, const std::string&, int, double, double, int, double, int, double, double, double)> output3_t;
+
+void calculate_hmm_ibd(
+    int maxlen,
+    int nsample1,
+    const std::vector<bool>& use_sample1,
+    bool iflag2,
+    int nsample2,
+    const std::vector<bool>& use_sample2,
+    int* diff,
+    int* same_min,
+    bool** use_pair,
+    double pi[2],
+    double pinit[2],
+    double k_rec_init,
+    int niter,
+    int nchrom,
+    const std::vector<int>& start_chr,
+    const std::vector<int>& end_chr,
+    int* pos,
+    int** geno1,
+    int** geno2,
+    double eps,
+    int* nall,
+    double** freq1,
+    double** freq2,
+    double rec_rate,
+    const std::vector<std::string>& sample1,
+    const std::vector<std::string>& sample2,
+    output1_t output_fn1,
+    output2_t output_fn2,
+    output3_t freq_fn,
+    bool nflag,
+    double k_rec_max,
+    double fit_thresh_dpi,
+    double fit_thresh_dk,
+    double fit_thresh_drelk,
+    double** discord
+)
+{
+    int* psi[2];
+    double* phi[2];
+    double* b[2];
+    double* alpha[2];
+    double* beta[2];
+
+    for (int is = 0; is < 2; ++is) {
+        psi[is] = new int[maxlen];
+        phi[is] = new double[maxlen];
+        b[is] = new double[maxlen];
+        alpha[is] = new double[maxlen];
+        beta[is] = new double[maxlen];
+    }
+
+    double* scale = new double[maxlen];
+    int* traj = new int[maxlen];
+
+    int ipair = 0;
+    for (int isamp = 0; isamp < nsample1; ++isamp) {
+
+        if (!use_sample1[isamp]) {continue;}
+
+        int jstart = (iflag2 ? 0 : isamp+1);
+        for (int jsamp = jstart; jsamp < nsample2; ++jsamp) {
+
+            if (!use_sample2[jsamp]) {continue;}
+
+            int sum = diff[ipair] + same_min[ipair];
+
+            double seq_ibd = 0;
+            double seq_dbd = 0;
+            double count_ibd_fb = 0;
+            double count_dbd_fb = 0;
+            double seq_ibd_fb = 0;
+            double seq_dbd_fb = 0;
+            int count_ibd_vit = 0;
+            int count_dbd_vit = 0;
+            double max_phi = 0;
+
+            if (use_pair[isamp][jsamp]) {
+
+                double last_prob = 0;
+                double last_pi = pi[0] = pinit[0];  // initialize with prior
+                pi[1] = pinit[1];
+                double k_rec = k_rec_init;
+                double last_krec = k_rec;
+                bool finish_fit = false;
+
+                double fmean, fmeani, fmeanj;
+
+                // Declare these out here because we will output them along with the other data after the loop.
+                int ntrans = 0;
+                int iter;
+                for (iter = 0; iter < niter; ++iter) {
+
+                    double trans_obs = 0;
+                    double trans_pred = 0;
+
+                    for (int chr = 1; chr <= nchrom; ++chr) {
+
+                        int nsite = 0;
+
+                        if (end_chr[chr] < 0) {continue;}
+
+                        int snp_ind = 0;
+                        for (int isnp = start_chr[chr]; isnp <= end_chr[chr]; ++isnp) {
+
+                            snp_ind = isnp - start_chr[chr];
+                            int gi = geno1[isamp][isnp];
+                            int gj = geno2[jsamp][isnp];
+                            double pright = 1 - eps * (nall[isnp] - 1);
+
+                            if (gi == -1 || gj == -1) {
+                                // O = n (missing data)
+                                b[0][snp_ind] = b[1][snp_ind] = 1.0;
+                            }
+                            else if (gi == gj) {
+                                // homozygote
+                                ++nsite;
+                                fmean = (freq1[isnp][gi] + freq2[isnp][gi]) / 2;
+                                b[0][snp_ind] = pright * pright * fmean + eps * eps * (1 - fmean); //IBD
+                                b[1][snp_ind] = pright * pright * freq1[isnp][gi]*freq2[isnp][gj] +
+                                                pright * eps * freq1[isnp][gi] * (1-freq2[isnp][gj]) +
+                                                pright * eps * (1 - freq1[isnp][gi]) * freq2[isnp][gj] +
+                                                eps * eps * (1-freq1[isnp][gi]) * (1-freq2[isnp][gj]);
+                            }
+                            else {
+                                // O = aA
+                                ++nsite;
+                                fmeani = (freq1[isnp][gi] + freq2[isnp][gi]) / 2;
+                                fmeanj = (freq1[isnp][gj] + freq2[isnp][gj]) / 2;
+                                b[0][snp_ind] = pright*eps*(fmeani+fmeanj) +
+                                                eps * eps * (1 - fmeani - fmeanj);
+                                b[1][snp_ind] = pright * pright * freq1[isnp][gi] * freq2[isnp][gj] +
+                                                pright*eps*( freq1[isnp][gi]*(1-freq2[isnp][gj]) + freq2[isnp][gj]*(1-freq1[isnp][gi]) ) +
+                                                eps * eps * (1 - freq1[isnp][gi]) * (1 - freq2[isnp][gj]);
+                            }
+
+                            if (isnp == start_chr[chr]) {
+
+                                psi[0][snp_ind] = psi[1][snp_ind] = 0;
+
+                                for (int is = 0; is < 2; ++is) {
+                                    phi[is][snp_ind] = log(pi[is]) + log(b[is][snp_ind]);
+                                    alpha[is][snp_ind] = pi[is] * b[is][snp_ind];
+                                    scale[is] = 1.;
+                                }
+                            }
+                            else {
+                                double ptrans = k_rec * rec_rate * (pos[isnp] - pos[isnp-1]);
+                                double a[2][2];
+                                a[0][1] = 1 - pi[0] - (1 - pi[0]) * exp(-ptrans);
+                                a[1][0] = 1 - pi[1] - (1 - pi[1]) * exp(-ptrans);
+                                a[0][0] = 1 - a[0][1];
+                                a[1][1] = 1 - a[1][0];
+
+                                for (int js = 0; js < 2; ++js) {    // index over state of current snp
+
+                                    double maxval = -10000000;
+                                    alpha[js][snp_ind] = scale[snp_ind] = 0;
+
+                                    for (int is = 0; is < 2; ++is) {    // index over state of previous snp
+
+                                        if (phi[is][snp_ind-1] + log(a[is][js]) > maxval ) {
+                                            maxval = phi[is][snp_ind-1] + log(a[is][js]);
+                                            psi[js][snp_ind] = is;
+                                        }
+
+                                        phi[js][snp_ind] = maxval + log(b[js][snp_ind]);
+                                        alpha[js][snp_ind] += alpha[is][snp_ind-1] * a[is][js] * b[js][snp_ind];
+                                    }
+
+                                    scale[snp_ind] += alpha[js][snp_ind];
+                                }
+
+                                for (int js = 0; js < 2; ++js) {    // scale alpha to prevent underflow (Rabiner eqns 92)
+                                    alpha[js][snp_ind] /= scale[snp_ind];
+                                }
+                            }   // end if initializing/continuing
+                        }  // end snp loop
+
+                        int last_snp = snp_ind;
+                        double max_phiL = phi[1][snp_ind];
+
+                        if (phi[0][snp_ind] > phi[1][snp_ind]) {max_phiL = phi[0][snp_ind];}
+
+                        int max = (phi[1][snp_ind] > phi[0][snp_ind]) ? 1 : 0;
+                        traj[snp_ind] = max;
+                        max_phi += max_phiL;
+
+                        // Loop backward to calculate betas (backward part of forward-backward)
+                        snp_ind = end_chr[chr] - start_chr[chr];
+                        beta[0][snp_ind] = beta[1][snp_ind] = 1;
+
+                        for (int isnp = end_chr[chr]-1; isnp >= start_chr[chr]; isnp--) {
+
+                            int snp_ind = isnp - start_chr[chr];
+                            double ptrans = k_rec * rec_rate * (pos[isnp+1] - pos[isnp]);
+                            double a[2][2];
+                            a[0][1] = 1 - pi[0] - (1 - pi[0]) * exp(-ptrans);
+                            a[1][0] = 1 - pi[1] - (1 - pi[1]) * exp(-ptrans);
+                            a[0][0] = 1 - a[0][1];
+                            a[1][1] = 1 - a[1][0];
+
+                            for (int is = 0; is < 2; ++is) {    // index over state of current snp
+
+                                beta[is][snp_ind] = 0;
+
+                                for (int js = 0; js < 2; ++js) {
+                                    // index over state of previous snp (= snp+1, since looping backward)
+                                    beta[is][snp_ind] += beta[js][snp_ind+1] * a[is][js] * b[js][snp_ind+1] / scale[snp_ind];
+                                }
+                            }
+                        }
+
+                        // inverse loop for Viterbi
+                        for (int snp_ind = last_snp-1; snp_ind >= 0; snp_ind--) {
+                            traj[snp_ind] = psi[max][snp_ind+1];
+                            max = traj[snp_ind];
+                        }
+
+                        // tabulate FB results
+                        for (int snp_ind = 0; snp_ind <= last_snp; ++snp_ind) {
+
+                            double p_ibd = alpha[0][snp_ind] * beta[0][snp_ind] /
+                                           (alpha[0][snp_ind] * beta[0][snp_ind] + alpha[1][snp_ind] * beta[1][snp_ind]);
+
+                            count_ibd_fb += p_ibd;
+                            count_dbd_fb += (1-p_ibd);
+
+                            if (snp_ind < last_snp) {
+
+                                int isnp = snp_ind + start_chr[chr];
+                                int delpos = pos[isnp+1] - pos[isnp];
+                                double ptrans = k_rec * rec_rate * delpos;
+                                double a[2][2];
+                                a[0][1] = 1 - pi[0] - (1 - pi[0]) * exp(-ptrans);
+                                a[1][0] = 1 - pi[1] - (1 - pi[1]) * exp(-ptrans);
+                                a[0][0] = 1 - a[0][1];
+                                a[1][1] = 1 - a[1][0];
+                                double xi[2][2];
+                                double xisum = 0;
+
+                                for (int is = 0; is < 2; ++is) {
+                                    for (int js = 0; js < 2; ++js) {
+                                        xi[is][js] = alpha[is][snp_ind] * a[is][js] * b[js][snp_ind+1] * beta[js][snp_ind+1];
+                                        xisum += xi[is][js];
+                                    }
+                                }
+
+                                double gamma[2] = { 0, 0 };
+                                for (int is = 0; is < 2; ++is) {
+                                    for (int js = 0; js < 2; ++js) {
+                                        xi[is][js] /= xisum;
+                                        gamma[is] += xi[is][js];
+                                    }
+                                }
+
+                                // xi(0,0) in Rabiner notation = prob of being in state 0 at t and 0 at t+1
+                                seq_ibd_fb += delpos * xi[0][0];
+                                seq_dbd_fb += delpos * xi[1][1];
+                                trans_obs += (xi[0][1] + xi[1][0]);
+                                trans_pred += gamma[0] * a[0][1] + gamma[1] * a[1][0];
+                            }
+                        }
+
+                        // print final Viterbi trajectory
+                        // start
+                        if (iter == niter - 1 || finish_fit) {
+                            if (nsite > 0) {
+
+                                // fprintf(outf, "%s\t%s\t%d\t%d", sample1[isamp].c_str(), sample2[jsamp].c_str(), chr, pos[0+start_chr[chr]]);
+                                output_fn1( sample1[isamp], sample2[jsamp], chr, pos[0+start_chr[chr]]);
+
+                                int start_snp = 0;
+                                for (int isnp = 1; isnp < end_chr[chr] - start_chr[chr] + 1; ++isnp) {
+
+                                    if (traj[isnp] != traj[isnp-1]) {
+
+                                        ++ntrans;
+                                        int add_seq = pos[isnp - 1 + start_chr[chr]] - pos[start_snp + start_chr[chr]] + 1;
+
+                                        if (traj[isnp-1] == 0) { seq_ibd += add_seq; }
+                                        else                   { seq_dbd += add_seq; }
+
+                                        // end one and start another
+                                        // fprintf(outf, "\t%d\t%d\t%d\n", pos[isnp - 1 + start_chr[chr]], traj[isnp-1], isnp - start_snp);
+                                        // fprintf(outf, "%s\t%s\t%d\t%d", sample1[isamp].c_str(), sample2[jsamp].c_str(), chr, pos[isnp + start_chr[chr]]);
+
+                                        output_fn2(pos[isnp - 1 + start_chr[chr]], traj[isnp-1], isnp - start_snp);
+                                        output_fn1(sample1[isamp], sample2[jsamp], chr, pos[isnp + start_chr[chr]]);
+
+                                        start_snp = isnp;
+                                    }
+                                }
+
+                                int isnp = end_chr[chr] - start_chr[chr];
+                                int add_seq = pos[isnp + start_chr[chr]] - pos[start_snp + start_chr[chr]] + 1;
+
+                                if (traj[isnp] == 0) { seq_ibd += add_seq; }
+                                else                 { seq_dbd += add_seq; }
+
+                                // fprintf(outf, "\t%d\t%d\t%d\n", pos[end_chr[chr]], traj[isnp], isnp - start_snp + 1);
+                                output_fn2(pos[end_chr[chr]], traj[isnp], isnp - start_snp + 1);
+
+                                // Tabulate sites by state for Viterbi trajectory
+                                for (int isnp = 0; isnp < end_chr[chr] - start_chr[chr] + 1; ++isnp) {
+                                    if (traj[isnp] == 0) { ++count_ibd_vit; }
+                                    else                 { ++count_dbd_vit; }
+                                }
+                            }
+                        }
+                    }  // end chrom loop
+
+                    // quit if fit converged on previous iteration; otherwise, update parameters
+                    if (finish_fit) {break;}
+
+                    if ((count_ibd_fb + count_dbd_fb) == 0) {
+                        REprintf("Insufficient information to estimate parameters.\n");
+                        REprintf("Do you have only one variant per chromosome?\n");
+                        Rcpp::stop("");
+                    }
+
+                    pi[0] = count_ibd_fb / (count_ibd_fb + count_dbd_fb);
+                    k_rec *= trans_obs / trans_pred;
+
+                    if (nflag && k_rec > k_rec_max) {k_rec = k_rec_max;}
+
+                    // ad hoc attempt to avoid being trapped in extremum
+                    if (iter < niter-1 && !finish_fit) {
+
+                        if (pi[0] < 1e-5) {pi[0] = 1e-5;}
+                        else if (pi[0] > 1- 1e-5) {pi[0] = 1 - 1e-5;}
+
+                        if (k_rec < 1e-5) {k_rec = 1e-5;}
+                    }
+
+                    pi[1] = 1 - pi[0];
+                    double delpi = pi[0] - last_pi;
+                    double delk = k_rec - last_krec;
+
+                    if (nflag && k_rec > k_rec_max) {delk = k_rec_max - last_krec;}
+
+                    last_pi = pi[0];
+                    last_krec = k_rec;
+                    last_prob = max_phi;
+
+                    // Evaluate fit
+                    if ( (fabs(delpi) < fit_thresh_dpi) &&
+                         (fabs(delk) < fit_thresh_dk || fabs(delk/k_rec) < fit_thresh_drelk) ) {
+
+                        finish_fit = true;
+                    }
+                }  // end parameter fitting loop
+
+/*
+                fprintf(
+                    pf,
+                    "%s\t%s\t%d\t%.4f\t%.5e\t%d\t%.3f\t%d\t%.5f\t%.5f\t%.5f\n",
+                    sample1[isamp].c_str(),
+                    sample2[jsamp].c_str(),
+                    sum,
+                    (discord[isamp][jsamp]),
+                    max_phi,
+                    iter,
+                    k_rec,
+                    ntrans,
+                    seq_ibd / (seq_ibd + seq_dbd),
+                    count_ibd_fb / (count_ibd_fb + count_dbd_fb),
+                    double(count_ibd_vit) / (count_ibd_vit + count_dbd_vit)
+                    );
+*/
+                freq_fn(
+                    sample1[isamp],
+                    sample2[jsamp],
+                    sum,
+                    discord[isamp][jsamp],
+                    max_phi,
+                    iter,
+                    k_rec,
+                    ntrans,
+                    seq_ibd / (seq_ibd + seq_dbd),
+                    count_ibd_fb / (count_ibd_fb + count_dbd_fb),
+                    double(count_ibd_vit) / (count_ibd_vit + count_dbd_vit)
+                );
+            }   // end if use pair
+
+            ++ipair;
+
+            if ((ipair%10000) == 0) {Rprintf("Starting pair %d\n", ipair);}
+        }
+    }
 }
