@@ -2,18 +2,34 @@
 # Generator token: 10BE3573-1514-4C36-9D1C-5A225CD40393
 
 #' @title
-#' hmmIBD
+#' hmmidm
 #' @description
 #' hmmIBD implementation from https://github.com/glipsnort/hmmIBD
 #'
-#' @param param_list A list of parameters created with \code{hmm_ibd}
+#' @param param_list A list of parameters created with \code{hmm_idm}
 #'
 #' @details
-#' \code{hmmibd_c} implements hidden Markov model for detecting segments
+#' \code{hmmidm_cpp} implements hidden Markov model for detecting segments
 #'   of shared ancestry (identity by descent) in genetic sequence data.
 #'
 #' @export
-hmmibd_c <- function(param_list) {
-    .Call('_hmmibdr_hmmibd_c', PACKAGE = 'hmmibdr', param_list)
+hmmidm_cpp <- function(param_list) {
+    .Call('_hmmidm_hmmidm_cpp', PACKAGE = 'hmmidm', param_list)
+}
+
+#' @title
+#' IdmRcppTest
+#' @description
+#' IDM test for calling from/returning data to R
+#'
+#' @param dfin A dataframe of inputs \code{hmm_idm}
+#'
+#' @details
+#' \code{IdmRcppTest} ... implements hidden Markov model for detecting segments
+#'   of shared ancestry (identity by descent) in genetic sequence data.
+#'
+#' @export
+IdmRcppTest <- function(dfin) {
+    .Call('_hmmidm_IdmRcppTest', PACKAGE = 'hmmidm', dfin)
 }
 

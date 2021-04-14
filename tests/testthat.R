@@ -1,3 +1,3 @@
 library(testthat)
-library(hmmibdr)
-test_check("hmmibdr")
+library(hmmidm)
+test_check("hmmidm")

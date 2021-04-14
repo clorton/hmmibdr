@@ -236,9 +236,10 @@ void determine_pairs_to_compare(int nsample1, bool iflag2, int nsample2, bool gf
 
         for (int jsamp = jstart; jsamp < nsample2; jsamp++) {
 
+            use_pair[isamp][jsamp] = false;
+
             // If good pairs were explicitly provided...
             if (gflag) {
-                use_pair[isamp][jsamp] = false;
                 for ( int ipair = 0; ipair < good_pairs.size(); ++ipair ) {
                     if ( ((good_pairs[ipair].first == sample1[isamp]) && (good_pairs[ipair].second == sample2[jsamp])) ||
                          ((good_pairs[ipair].first == sample2[jsamp]) && (good_pairs[ipair].second == sample1[isamp])) ) {
@@ -313,12 +314,12 @@ void parse_input1_line(
     int&  nskipped,
     bool& killit,
     int&  allele,
-    int   maximum_alleles,
+    int   maximum_allele,
     int&  excessive_alleles,
     int** genome,
     const std::vector<bool>& use_sample,
-    int*  allele_count,
-    int&  total_alleles
+    int*  allele_counts,
+    int&  total_valid_alleles
 )
 {
     std::vector<std::string> tokens = split(input_line, '\t');
@@ -368,17 +369,18 @@ void parse_input1_line(
                         Rcpp::stop("");
                     }
 
-                    if (allele > maximum_alleles) {
+                    if (allele > maximum_allele) {
                         ++excessive_alleles;
                         killit = true;
                     }
                     else {
-                        genome[itoken - 2][nsnp] = allele;
+                        int isample = itoken - 2;           // offset for chromosome and position columns
+                        genome[isample][nsnp] = allele;
 
-                        if (use_sample[itoken - 2]) {
-                            if (allele >= 0) {
-                                allele_count[allele]++;
-                                ++total_alleles;
+                        if (use_sample[isample]) {
+                            if (allele >= 0) {              // not missing
+                                allele_counts[allele]++;    // increment times this allele has been seen
+                                ++total_valid_alleles;      // increment number of valid alleles that have been seen
                             }
                         }
                     }
@@ -398,7 +400,7 @@ void parse_input2_line(
     int nsnp,
     int pop1_chromosome,
     int& allele,
-    int maximum_alleles,
+    int maximum_allele,
     bool& killit,
     int& excessive_alleles,
     int** genome,
@@ -444,7 +446,7 @@ void parse_input2_line(
                     Rcpp::stop("");
                 }
 
-                if (allele > maximum_alleles) {
+                if (allele > maximum_allele) {
                     ++excessive_alleles;
                     killit = true;
                 }
@@ -469,17 +471,15 @@ void parse_frequency_line(
     const std::string& input_line,
     double* frequencies,
     int max_all,
-    int& fposition,
-    int& fchromosome,
     int chromosome,
-    int* positions,
-    int nsnp
+    int position
 )
 {
     // Clear previous frequencies (since might have skipped previous snp via 'continue')
     memset(frequencies, 0, (max_all + 1) * sizeof(double));
 
-    fposition = fchromosome = 0;
+    int fchromosome = 0;
+    int fposition = 0;
 
     std::vector<std::string> tokens = split(input_line, '\t');
     for ( int itoken = 0; itoken < tokens.size(); ++itoken ) {
@@ -507,7 +507,8 @@ void parse_frequency_line(
 
             default:
                 try {
-                    frequencies[itoken - 2] = std::stod(token);
+                    int iallele = itoken - 2;   // account for chromosome and position columns
+                    frequencies[iallele] = std::stod(token);
                 } catch (...) {
                     REprintf("Invalid frequency '%s' (must be numeric)\n", token.c_str());
                     Rcpp::stop("");
@@ -516,45 +517,46 @@ void parse_frequency_line(
         }
     }
 
-    if (fchromosome != chromosome || fposition != positions[nsnp]) {
+    if (fchromosome != chromosome || fposition != position) {
         REprintf("Mismatch between data file and frequency file. Data file (chr/pos): %d/%d vs freq file: %d/%d\n",
-                 chromosome, positions[nsnp], fchromosome, fposition);
+                 chromosome, position, fchromosome, fposition);
         Rcpp::stop("");
     }
 }
 
 void calculate_allele_frequencies(
-    int maximum_alleles,
+    int maximum_allele,
     bool freq_flag1,
-    double** freq1,
-    int nsnp,
+    double* freq1,
     double* ffreq1,
     int* pop1_allele_counts,
     int pop1_total_alleles,
     bool iflag2,
     bool freq_flag2,
-    double** freq2,
+    double* freq2,
     double* ffreq2,
     int* pop2_allele_counts,
     int pop2_total_alleles,
     double& fmean,
     double& maximum_frequency,
     int& majall,
-    int* alleles_per_snp
+    int& alleles_per_snp
 )
 {
     // process this variant -- calculate allele frequencies for each pop
-    for (int allele_index = 0; allele_index <= maximum_alleles; ++allele_index) {
+    for (int allele_index = 0; allele_index <= maximum_allele; ++allele_index) {
 
-        if (freq_flag1) { freq1[nsnp][allele_index] = ffreq1[allele_index]; }
-        else {            freq1[nsnp][allele_index] = (double) pop1_allele_counts[allele_index] / pop1_total_alleles; }
+        // use supplied frequency data or calculate from observations
+        if (freq_flag1) { freq1[allele_index] = ffreq1[allele_index]; }
+        else            { freq1[allele_index] = (double) pop1_allele_counts[allele_index] / pop1_total_alleles; }
 
         if (iflag2) {
-            if (freq_flag2) { freq2[nsnp][allele_index] = ffreq2[allele_index]; }
-            else {            freq2[nsnp][allele_index] = (double) pop2_allele_counts[allele_index] / pop2_total_alleles; }
+            // use supplied frequency data or calculate from observations
+            if (freq_flag2) { freq2[allele_index] = ffreq2[allele_index]; }
+            else            { freq2[allele_index] = (double) pop2_allele_counts[allele_index] / pop2_total_alleles; }
         }
 
-        fmean = (freq1[nsnp][allele_index] + freq2[nsnp][allele_index]) / 2;
+        fmean = (freq1[allele_index] + freq2[allele_index]) / 2;
 
         if (fmean > maximum_frequency) {
             maximum_frequency = fmean;
@@ -562,7 +564,7 @@ void calculate_allele_frequencies(
         }
 
         if (fmean > 0) {
-            alleles_per_snp[nsnp]++;
+            alleles_per_snp++;
         }
     }
 }
@@ -579,10 +581,7 @@ void tabulate_differences_by_pair_for_discordance(
     int* same_min,
     int* diff,
     int* nmiss_bypair,
-    int nsnp,
-    int chromosome,
-    std::vector<int>& start_chromosome,
-    std::vector<int>& end_chromosome
+    int nsnp
 )
 // Tabulate differences by pair for calculating discordance
 {
@@ -597,28 +596,22 @@ void tabulate_differences_by_pair_for_discordance(
 
             if (!pop2_use_sample[jsamp]) {continue;}
 
-            if (pop1_genome[isamp][nsnp] != -1 && pop2_genome[jsamp][nsnp] != -1) {
-                if (pop1_genome[isamp][nsnp] == pop2_genome[jsamp][nsnp]) {
-                    if (pop1_genome[isamp][nsnp] != majall) {
-                        same_min[ipair]++;
+            if (pop1_genome[isamp][nsnp] != -1 && pop2_genome[jsamp][nsnp] != -1) { // If no missing data...
+                if (pop1_genome[isamp][nsnp] == pop2_genome[jsamp][nsnp]) {         // If samples have same allele...
+                    if (pop1_genome[isamp][nsnp] != majall) {                       // If that allele is not the major (most common) allele...
+                        same_min[ipair]++;                                          // Increment count of matching minor alleles for the pair
                     }
                 }
-                else {diff[ipair]++;}
+                else {
+                    diff[ipair]++;                                                  // Samples have different alleles at this position
+                }
             }
             else {
-                nmiss_bypair[ipair]++;
+                nmiss_bypair[ipair]++;                                              // One or both of the samples are missing data
             }
 
             ++ipair;
         }
-    }
-
-    if (nsnp < start_chromosome[chromosome]) {
-        start_chromosome[chromosome] = nsnp;
-    }
-
-    if (nsnp > end_chromosome[chromosome]) {
-        end_chromosome[chromosome] = nsnp;
     }
 }
 
@@ -628,7 +621,6 @@ void filter_pairs_by_discordance_and_markers(
     bool iflag2,
     int nsample2,
     const std::vector<bool>& use_sample2,
-    int& sum,
     int* diff,
     int* same_min,
     double** discord,
@@ -649,21 +641,18 @@ void filter_pairs_by_discordance_and_markers(
 
             if (!use_sample2[jsamp]) {continue;}
 
-            sum = diff[ipair] + same_min[ipair];
-
-            if (sum == 0) {
-                discord[isamp][jsamp]  = 0;
-            }
-            else {
-                discord[isamp][jsamp] = (double) diff[ipair] / sum;
-            }
-
             if (use_pair[isamp][jsamp]) {
-                if ( (discord[isamp][jsamp] >  max_discord) ||
-                      (sum < min_inform) ||
-                      (discord[isamp][jsamp] < min_discord) ) {
 
-                    use_pair[isamp][jsamp] = false;
+                int sum = diff[ipair] + same_min[ipair];            // Total useful observations - different alleles + same minor allele
+
+                if (sum == 0) { discord[isamp][jsamp] = 0; }
+                else          { discord[isamp][jsamp] = (double) diff[ipair] / sum; }   // number of differing observations / total observations
+
+                if ( (sum < min_inform) ||                          // If too few observations
+                     (discord[isamp][jsamp] > max_discord) ||       // or too different
+                     (discord[isamp][jsamp] < min_discord) ) {      // or too similar...
+
+                    use_pair[isamp][jsamp] = false;                 // do not use this pair.
                 }
                 else {
                     ++nuse_pair;
@@ -746,19 +735,19 @@ void calculate_hmm_ibd(
 
             if (!use_sample2[jsamp]) {continue;}
 
-            int sum = diff[ipair] + same_min[ipair];
-
-            double seq_ibd = 0;
-            double seq_dbd = 0;
-            double count_ibd_fb = 0;
-            double count_dbd_fb = 0;
-            double seq_ibd_fb = 0;
-            double seq_dbd_fb = 0;
-            int count_ibd_vit = 0;
-            int count_dbd_vit = 0;
-            double max_phi = 0;
-
             if (use_pair[isamp][jsamp]) {
+
+                int sum = diff[ipair] + same_min[ipair];
+
+                double seq_ibd = 0;
+                double seq_dbd = 0;
+                double count_ibd_fb = 0;
+                double count_dbd_fb = 0;
+                double seq_ibd_fb = 0;
+                double seq_dbd_fb = 0;
+                int count_ibd_vit = 0;
+                int count_dbd_vit = 0;
+                double max_phi = 0;
 
                 double last_prob = 0;
                 double last_pi = pi[0] = pinit[0];  // initialize with prior
@@ -776,6 +765,19 @@ void calculate_hmm_ibd(
 
                     double trans_obs = 0;
                     double trans_pred = 0;
+
+                    ntrans = 0;
+                    seq_ibd = 0;
+                    seq_dbd = 0;
+                    count_ibd_fb = 0;
+                    count_dbd_fb = 0;
+                    seq_ibd_fb = 0;
+                    seq_dbd_fb = 0;
+
+                    count_ibd_vit = 0;
+                    count_dbd_vit = 0;
+
+                    max_phi = 0;
 
                     for (int chr = 1; chr <= nchrom; ++chr) {
 
@@ -800,9 +802,9 @@ void calculate_hmm_ibd(
                                 ++nsite;
                                 fmean = (freq1[isnp][gi] + freq2[isnp][gi]) / 2;
                                 b[0][snp_ind] = pright * pright * fmean + eps * eps * (1 - fmean); //IBD
-                                b[1][snp_ind] = pright * pright * freq1[isnp][gi]*freq2[isnp][gj] +
+                                b[1][snp_ind] = pright * pright * freq1[isnp][gi] * freq2[isnp][gj] +
                                                 pright * eps * freq1[isnp][gi] * (1-freq2[isnp][gj]) +
-                                                pright * eps * (1 - freq1[isnp][gi]) * freq2[isnp][gj] +
+                                                pright * eps * (1-freq1[isnp][gi]) * freq2[isnp][gj] +
                                                 eps * eps * (1-freq1[isnp][gi]) * (1-freq2[isnp][gj]);
                             }
                             else {
@@ -810,11 +812,11 @@ void calculate_hmm_ibd(
                                 ++nsite;
                                 fmeani = (freq1[isnp][gi] + freq2[isnp][gi]) / 2;
                                 fmeanj = (freq1[isnp][gj] + freq2[isnp][gj]) / 2;
-                                b[0][snp_ind] = pright*eps*(fmeani+fmeanj) +
-                                                eps * eps * (1 - fmeani - fmeanj);
+                                b[0][snp_ind] = pright * eps * (fmeani+fmeanj) +
+                                                eps * eps * (1-fmeani-fmeanj);
                                 b[1][snp_ind] = pright * pright * freq1[isnp][gi] * freq2[isnp][gj] +
-                                                pright*eps*( freq1[isnp][gi]*(1-freq2[isnp][gj]) + freq2[isnp][gj]*(1-freq1[isnp][gi]) ) +
-                                                eps * eps * (1 - freq1[isnp][gi]) * (1 - freq2[isnp][gj]);
+                                                pright * eps * (freq1[isnp][gi] * (1-freq2[isnp][gj]) + freq2[isnp][gj] * (1-freq1[isnp][gi])) +
+                                                eps * eps * (1-freq1[isnp][gi]) * (1-freq2[isnp][gj]);
                             }
 
                             if (isnp == start_chr[chr]) {
@@ -824,26 +826,27 @@ void calculate_hmm_ibd(
                                 for (int is = 0; is < 2; ++is) {
                                     phi[is][snp_ind] = log(pi[is]) + log(b[is][snp_ind]);
                                     alpha[is][snp_ind] = pi[is] * b[is][snp_ind];
-                                    scale[is] = 1.;
+                                    scale[is] = 1;
                                 }
                             }
                             else {
                                 double ptrans = k_rec * rec_rate * (pos[isnp] - pos[isnp-1]);
                                 double a[2][2];
-                                a[0][1] = 1 - pi[0] - (1 - pi[0]) * exp(-ptrans);
-                                a[1][0] = 1 - pi[1] - (1 - pi[1]) * exp(-ptrans);
+                                a[0][1] = 1 - pi[0] - (1-pi[0]) * exp(-ptrans);
+                                a[1][0] = 1 - pi[1] - (1-pi[1]) * exp(-ptrans);
                                 a[0][0] = 1 - a[0][1];
                                 a[1][1] = 1 - a[1][0];
 
                                 for (int js = 0; js < 2; ++js) {    // index over state of current snp
 
-                                    double maxval = -10000000;
+                                    double maxval = -DBL_MAX;
                                     alpha[js][snp_ind] = scale[snp_ind] = 0;
 
                                     for (int is = 0; is < 2; ++is) {    // index over state of previous snp
 
-                                        if (phi[is][snp_ind-1] + log(a[is][js]) > maxval ) {
-                                            maxval = phi[is][snp_ind-1] + log(a[is][js]);
+                                        double test = phi[is][snp_ind-1] + log(a[is][js]);
+                                        if ( test > maxval ) {
+                                            maxval = test;
                                             psi[js][snp_ind] = is;
                                         }
 
@@ -1005,7 +1008,7 @@ void calculate_hmm_ibd(
                     pi[0] = count_ibd_fb / (count_ibd_fb + count_dbd_fb);
                     k_rec *= trans_obs / trans_pred;
 
-                    if (nflag && k_rec > k_rec_max) {k_rec = k_rec_max;}
+                    if (nflag && (k_rec > k_rec_max)) {k_rec = k_rec_max;}
 
                     // ad hoc attempt to avoid being trapped in extremum
                     if (iter < niter-1 && !finish_fit) {
@@ -1020,7 +1023,7 @@ void calculate_hmm_ibd(
                     double delpi = pi[0] - last_pi;
                     double delk = k_rec - last_krec;
 
-                    if (nflag && k_rec > k_rec_max) {delk = k_rec_max - last_krec;}
+                    if (nflag && (k_rec > k_rec_max)) {delk = k_rec_max - last_krec;}
 
                     last_pi = pi[0];
                     last_krec = k_rec;

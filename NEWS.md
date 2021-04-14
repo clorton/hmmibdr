@@ -1,8 +1,4 @@
-## hmmibdr 0.2.0
+## hmmidm 0.1.0
 
-* test suite in
-
-## hmmidr 0.1.0
-
-* Initial release for personal use
+* Initial release for BMGF/GH/IDM use
 * Full feature wrapping of hmmibd functionality

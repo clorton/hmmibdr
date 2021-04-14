@@ -18,4 +18,5 @@
 #include <unistd.h>
 #include "util.h"
 
-int hmmibd_c(Rcpp::List param_list);
+int hmmdm_cpp(Rcpp::List param_list);
+Rcpp::DataFrame IdmRcppTest(const Rcpp::DataFrame& dfin);

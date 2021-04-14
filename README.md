@@ -1,15 +1,15 @@
 
-# hmmibdr
+# hmmidm
 
 [![Project Status: Active – The project has reached a stable, usable
 state and is being actively
 developed.](https://www.repostatus.org/badges/latest/active.svg)](https://www.repostatus.org/#active)
 [![Travis-CI Build
 Status](https://travis-ci.org/ojwatson/hmmibdr.png?branch=master)](https://travis-ci.org/ojwatson/hmmibdr)
-[![codecov.io](https://codecov.io/github/ojwatson/hmmibdr/coverage.svg?branch=master)](https://codecov.io/github/ojwatson/hmmibdr?branch=master)
+[![codecov.io](https://codecov.io/github/clorton/hmmibdr/coverage.svg?branch=master)](https://codecov.io/github/clorton/hmmibdr?branch=master)
 
 Direct wrapper for [HMMIBD](https://github.com/glipsnort/hmmIBD) in
-Rcpp.
+Rcpp refactored from [HMMIBDR](https://github.com/ojwatson/hmmibdr).
 
 ## Installation
 
@@ -17,12 +17,12 @@ You can install the latest version using:
 
 ``` r
 #install.packages("devtools")
-devtools::install_github("OJWatson/hmmibdr")
+devtools::install_github("clorton/hmmidm")
 ```
 
 ``` r
 # Load the package
-library(hmmibdr)
+library(hmmidm)
 ```
 
 ## Demonstration
@@ -32,8 +32,8 @@ Firstly, with one population:
 ``` r
 ## one population
 tf <- tempfile(pattern = "output_Cambodia")
-out <- hmm_ibd(input_file = system.file("extdata/pf3k_Cambodia_13.txt", package = "hmmibdr"),
-               allele_freqs =  system.file("extdata/freqs_pf3k_Cambodia_13.txt", package = "hmmibdr"),
+out <- hmm_idm(input_file = system.file("extdata/pf3k_Cambodia_13.txt", package = "hmmidm"),
+               allele_freqs =  system.file("extdata/freqs_pf3k_Cambodia_13.txt", package = "hmmidm"),
                output_file = tf)
 #> Maximum fit iterations allowed: 5
 #> Minimum marker spacing (bp): 683262674
@@ -48,7 +48,7 @@ out <- hmm_ibd(input_file = system.file("extdata/pf3k_Cambodia_13.txt", package 
 #> sample pairs analyzed (filtered for discordance and informative markers): 45
 ```
 
-`hmmibdr` now returns the relevant fractions and segments as a list.
+`hmmidm` now returns the relevant fractions and segments as a list.
 Firstly the fraction of sites IBD:
 
 ``` r
@@ -89,12 +89,12 @@ head(out$segments)
 #> 6 PH0047-Cx PH0051-Cx   2 483362 839251         1 2855
 ```
 
-`hmmibdr` also can be run for two populations:
+`hmmidm` also can be run for two populations:
 
 ``` r
 ## two pops
 tf2 <- tempfile("output_Cambodia_Ghana")
-out <- hmm_ibd(input_file = system.file("extdata/pf3k_Cambodia_13.txt", package = "hmmibdr"),
+out <- hmm_idm(input_file = system.file("extdata/pf3k_Cambodia_13.txt", package = "hmmibdr"),
                allele_freqs = system.file("extdata/freqs_pf3k_Cambodia_13.txt", package = "hmmibdr"),
                genotypes_sec_pop = system.file("extdata/pf3k_Ghana_13.txt", package = "hmmibdr"),
                allele_freqs_sec_pop = system.file("extdata/freqs_pf3k_Ghana_13.txt", package = "hmmibdr"),

@@ -48,9 +48,7 @@
 #' @export
 #'
 
-
-
-hmm_ibd <- function(input_file,
+hmm_idm <- function(input_file,
                     output_file,
                     allele_freqs = NULL,
                     genotypes_sec_pop = NULL,
@@ -69,57 +67,54 @@ hmm_ibd <- function(input_file,
                     min_snp_sep = 5,
                     rec_rate = 7.4e-7) {
 
+    files <- grep(basename(output_file),
+                  list.files(dirname(output_file), full.names = TRUE),
+                  value=TRUE)
 
-  files <- grep(basename(output_file),
-                list.files(dirname(output_file), full.names = TRUE),
-                value=TRUE)
+    if (length(grep("fract", files, value=TRUE)) == 0 || overwrite) {
 
-  if (length(grep("fract", files, value=TRUE)) == 0 || overwrite) {
+        # create param list
+        param_list <- list(
+            f = allele_freqs,
+            F = allele_freqs_sec_pop,
+            i = input_file,
+            I = genotypes_sec_pop,
+            o = output_file,
+            m = max_fit_iterations,
+            b = exclude_ids,
+            g = analysis_ids,
+            n = num_gens,
+            eps = eps,
+            min_inform = min_inform,
+            min_discord = min_discord,
+            max_discord = max_discord,
+            nchrom = nchrom,
+            min_snp_sep = min_snp_sep,
+            rec_rate = rec_rate
+        )
 
-    # create param list
-    param_list <- list(
-      f = allele_freqs,
-      F = allele_freqs_sec_pop,
-      i = input_file,
-      I = genotypes_sec_pop,
-      o = output_file,
-      m = max_fit_iterations,
-      b = exclude_ids,
-      g = analysis_ids,
-      n = num_gens,
-      eps = eps,
-      min_inform = min_inform,
-      min_discord = min_discord,
-      max_discord = max_discord,
-      nchrom = nchrom,
-      min_snp_sep = min_snp_sep,
-      rec_rate = rec_rate
-    )
+        # run cpp code
+        ret <- hmmidm_cpp(param_list)
 
-    # run cpp code
-    ret <- hmmibd_c(param_list)
-
-    # check result
-    if (ret) {
-      stop("c++ somehow returned non-integer")
+        # check result
+        if (ret) {
+            stop("c++ somehow returned non-zero")
+        }
     }
 
-  }
-  # get results
-  files <- grep(output_file,
-                list.files(dirname(output_file), full.names = TRUE),
-                value=TRUE)
+    # get results
+    files <- grep(output_file,
+                  list.files(dirname(output_file), full.names = TRUE),
+                  value=TRUE)
 
-  # read files in and create results list
-  fract <- read.csv(grep("fract", files, value=TRUE), sep = "\t")
-  if (!fract_only) {
-    segments <- read.csv(files[-grep("fract", files)], sep = "\t")
-    res <- list("fract" = fract, "segments" = segments)
-  } else {
-    res <- list("fract" = fract)
-  }
+    # read files in and create results list
+    fract <- read.csv(grep("fract", files, value=TRUE), sep = "\t")
+    if (!fract_only) {
+        segments <- read.csv(files[-grep("fract", files)], sep = "\t")
+        res <- list("fract" = fract, "segments" = segments)
+    } else {
+        res <- list("fract" = fract)
+    }
 
-  return(res)
-
-
+    return(res)
 }

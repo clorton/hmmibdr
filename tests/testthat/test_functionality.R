@@ -11,7 +11,7 @@ test_that("hmmibdr runs", {
 
   # run hmmibd and check outputs
   tf <- tempfile()
-  expect_output(out <- hmm_ibd(input_file = input_file,
+  expect_output(out <- hmm_idm(input_file = input_file,
                allele_freqs =  allele_freqs,
                output_file = tf))
 
@@ -20,7 +20,7 @@ test_that("hmmibdr runs", {
   expect_equal(ncol(out$segments), 7)
 
   # check that if reran it will grab the save
-  expect_silent(out2 <- hmm_ibd(input_file = input_file,
+  expect_silent(out2 <- hmm_idm(input_file = input_file,
                  allele_freqs =  allele_freqs,
                  output_file = tf))
 
@@ -29,7 +29,7 @@ test_that("hmmibdr runs", {
 
   # is this also true when grabbing only the fract
   # check that if reran it will grab the save
-  expect_silent(out3 <- hmm_ibd(input_file = input_file,
+  expect_silent(out3 <- hmm_idm(input_file = input_file,
                                 allele_freqs =  allele_freqs,
                                 output_file = tf,
                                 fract_only = TRUE))

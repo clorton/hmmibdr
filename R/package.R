@@ -1,19 +1,18 @@
 #' Rcpp implementation of THMMIBD
 #'
-#' @name hmmibdr
+#' @name hmmidm
 #' @docType package
-#' @title Wrapper for HMMIBD in Rcpp
+#' @title IDM Wrapper for HMMIBD in Rcpp
 #'
 #' @importFrom stats median quantile sd
 #' @importFrom utils read.table write.table head read.csv
 #' @importFrom Rcpp evalCpp
 #'
-#' @useDynLib hmmibdr
+#' @useDynLib hmmidm
 #'
-#' @description Wrapper for HMMIBD in Rcpp
+#' @description IDM Wrapper for HMMIBD in Rcpp
 #'
 #' @references https://github.com/glipsnort/hmmIBD
 #'
-
 
 NULL
