@@ -1,6 +1,9 @@
 
 #include "hmmIBD.h"
 
+#ifdef WIN32
+#include "strsep.h"
+#endif
 
 //' @title
 //' hmmIBD

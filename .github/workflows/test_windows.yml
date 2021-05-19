@@ -1,0 +1,13 @@
+name: test_on_windows
+on: [push, pull_request]
+jobs:
+  setup_build_test:
+    name: Setup and test on Windows
+    runs-on: windows-latest
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@master
+    - name: Install R
+      uses: r-lib/actions/setup-r@master
+    - name: Run HMMIBDR Tests
+      run: Rscript tests/test_package.R

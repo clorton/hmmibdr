@@ -39,8 +39,7 @@ test_that("hmmibdr runs", {
   expect_identical(out3$fract, out2$fract)
 
   # clean up the output files from the test
-  files <- grep(tf,
-                list.files(dirname(tf), full.names = TRUE),
-                value=TRUE)
-  file.remove(files)
+  fract_file <- paste(tf, ".hmm_fract.txt", sep="")
+  segment_file <- paste(tf, ".hmm.txt", sep="")
+  file.remove(segment_file, fract_file)
 })

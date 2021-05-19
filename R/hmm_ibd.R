@@ -105,22 +105,21 @@ hmm_ibd <- function(input_file,
     }
 
   }
-  # get results
-  files <- grep(output_file,
-                list.files(dirname(output_file), full.names = TRUE),
-                value=TRUE)
-
   # read files in and create results list
-  fract <- read.csv(grep("fract", files, value=TRUE), sep = "\t")
+
+  fract_file <- paste(output_file, ".hmm_fract.txt", sep="")
+  segment_file <- paste(output_file, ".hmm.txt", sep="")
+
+  fract <- read.csv(fract_file, sep = "\t")
   if (!fract_only) {
-    segments <- read.csv(files[-grep("fract", files)], sep = "\t")
+    segments <- read.csv(segment_file, sep = "\t")
     res <- list("fract" = fract, "segments" = segments)
   } else {
     res <- list("fract" = fract)
   }
 
-  if (cache == FALSE) {
-    file.remove(files)
+  if (!cache) {
+    file.remove(segment_file, fract_file)
   }
 
   return(res)
